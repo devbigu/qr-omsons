@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+server.out.log
+server.err.log
+data/certificates/
+scripts/__pycache__/
+*.pyc
+*.Zone.Identifier
+.agents/

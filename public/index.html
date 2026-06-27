@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omsons QR Label Generator</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">OMSONS</div>
+        
+      </div>
+      <nav>
+        <button class="nav-button active" data-screen="dashboard">Dashboard</button>
+        <button class="nav-button" data-screen="products">Products</button>
+        <button class="nav-button" data-screen="generate">Generate Labels</button>
+        <button class="nav-button" data-screen="labels">Label Preview</button>
+        <button class="nav-button" data-screen="certificates">COA Records</button>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <h1>Omsons QR Label Generator</h1>
+          <p>Catalogue lookup, serial generation, printable labels, and public COA verification.</p>
+        </div>
+        <div class="storage-pill" id="storagePill">Storage</div>
+      </header>
+
+      <section class="screen active" id="dashboard">
+        <div class="metric-grid">
+          <div class="metric"><span>Total Products</span><strong id="totalProducts">0</strong></div>
+          <div class="metric"><span>QR Labels</span><strong id="totalLabels">0</strong></div>
+          <div class="metric"><span>Batches</span><strong id="totalBatches">0</strong></div>
+          <div class="metric"><span>Certificates</span><strong id="totalCertificates">0</strong></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Recent Generated Labels</h2>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Certificate</th>
+                  <th>Catalogue</th>
+                  <th>Lot</th>
+                  <th>Serial</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="recentLabels"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="products">
+        <div class="split-layout">
+          <form class="panel form-grid" id="productForm">
+            <div class="panel-head">
+              <h2>Product Master</h2>
+              <button type="submit">Save Product</button>
+            </div>
+            <input type="hidden" id="productId">
+            <input type="hidden" id="productType" value="Syringe filter">
+            <input type="hidden" id="category" value="Membrane filter">
+            <input type="hidden" id="technicalDetail" value="">
+            <input type="hidden" id="packSize" value="">
+            <input type="hidden" id="hsnCode" value="">
+            <input type="hidden" id="labelTemplate" value="omsons_sample_v1">
+            <input type="hidden" id="certificateTemplate" value="standard_coa_v1">
+            <input type="hidden" id="lotSuffix" value="">
+            <label>Product name<input id="productName" list="productLineOptions" required placeholder="Puricap PES"></label>
+            <label>Make<input id="company" required placeholder="Omsons Germany"></label>
+            <label>Catalog No.<input id="catalogueNumber" required placeholder="OM260-020"></label>
+            <label>Membrane<input id="membrane" list="membraneOptions" required placeholder="PES"></label>
+            <label>Pore size<input id="poreSize" list="poreSizeOptions" required placeholder="0.45µm"></label>
+            <label>Sterility<input id="sterilityType" list="sterilityOptions" placeholder="Non-sterile"></label>
+            <label>Housing<input id="housing" placeholder="Polypropylene"></label>
+            <label>Filter Diameter<input id="filterDiameter" list="filterDiameterOptions" placeholder="25"></label>
+            <label>Burst pressure<input id="burstPressure" placeholder="&gt; 7kg/cm²"></label>
+            <label>Holdup Volume<input id="holdupVolume" list="holdupVolumeOptions" placeholder="&lt; 50µl"></label>
+            <label>Sterilization<input id="sterilizationMethod" list="sterilizationOptions" placeholder="ETO / Gamma"></label>
+            <label>Lot prefix<input id="lotPrefix" value="S"></label>
+            <label>Lot product code<input id="lotProductCode" required placeholder="55"></label>
+            <label>Month codes<input id="lotMonthCodes" value="A,B,C,D,E,F,G,H,I,J,K,L"></label>
+            <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
+            <datalist id="productLineOptions">
+              <option value="Nylon Syringe Filters">
+              <option value="Nylon Syringe Filters with Micro-glass Fiber">
+              <option value="High Flow Syringe Filters">
+              <option value="High Flow Syringe Filters with Micro-glass Fiber">
+              <option value="CA Syringe Filters">
+              <option value="CA Syringe Filters with Micro-glass Fiber">
+              <option value="PVDF Syringe Filters">
+              <option value="PVDF Syringe Filters with Micro-glass Fiber">
+              <option value="PES Syringe Filters">
+              <option value="PES Syringe Filters with Micro-glass Fiber">
+              <option value="PTFE Syringe Filters, Hydrophobic">
+              <option value="PTFE Syringe Filters, Hydrophilic">
+              <option value="PTFE Syringe Filters with Micro-glass Fiber">
+              <option value="Glass Fiber Syringe Filters">
+              <option value="Glass Fiber Syringe Filters with Micro-glass Fiber">
+              <option value="MCE Syringe Filters">
+              <option value="MCE Syringe Filters with Micro-glass Fiber">
+              <option value="PP Syringe Filters">
+              <option value="PP Syringe Filters with Micro-glass Fiber">
+            </datalist>
+            <datalist id="membraneOptions">
+              <option value="Nylon">
+              <option value="Nylon with Micro-glass Fiber">
+              <option value="High Flow">
+              <option value="High Flow with Micro-glass Fiber">
+              <option value="CA">
+              <option value="CA with Micro-glass Fiber">
+              <option value="PVDF">
+              <option value="PVDF with Micro-glass Fiber">
+              <option value="PES">
+              <option value="PES with Micro-glass Fiber">
+              <option value="PTFE">
+              <option value="PTFE with Micro-glass Fiber">
+              <option value="Glass Fiber">
+              <option value="Glass Fiber with Micro-glass Fiber">
+              <option value="MCE">
+              <option value="MCE with Micro-glass Fiber">
+              <option value="PP">
+              <option value="PP with Micro-glass Fiber">
+            </datalist>
+            <datalist id="poreSizeOptions">
+              <option value="0.2µm">
+              <option value="0.45µm">
+              <option value="0.5µm">
+              <option value="0.8µm">
+              <option value="1µm">
+              <option value="1.5µm">
+              <option value="2µm">
+              <option value="5µm">
+              <option value="10µm">
+            </datalist>
+            <datalist id="filterDiameterOptions">
+              <option value="4">
+              <option value="13">
+              <option value="25">
+              <option value="33">
+            </datalist>
+            <datalist id="holdupVolumeOptions">
+              <option value="&lt; 5µl">
+              <option value="&lt; 10µl">
+              <option value="&lt; 20µl">
+              <option value="&lt; 50µl">
+              <option value="&lt; 70µl">
+              <option value="NA">
+            </datalist>
+            <datalist id="sterilityOptions">
+              <option value="Sterile">
+              <option value="Non-sterile">
+            </datalist>
+            <datalist id="sterilizationOptions">
+              <option value="ETO">
+              <option value="Gamma">
+              <option value="ETO / Gamma">
+            </datalist>
+          </form>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Catalogue Search</h2>
+              <input class="search-box" id="productSearch" placeholder="OM553-02-02-045">
+            </div>
+            <div id="productList" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="generate">
+        <div class="split-layout">
+          <form class="panel form-grid" id="generateForm">
+            <div class="panel-head">
+              <h2>Generate QR Labels</h2>
+              <button type="submit">Generate</button>
+            </div>
+            <label class="wide">Select product
+              <select id="genCatalogue" required>
+                <option value="">Select a product</option>
+              </select>
+            </label>
+            <div class="product-summary" id="productSummary">Add a product in Product Master to begin.</div>
+            <label>Manufacturing date<input id="manufacturingDate" type="date" required></label>
+            <label>Expiry date<input id="expiryDate" type="date"></label>
+            <label class="wide">Lot number<input id="lotNumber" required readonly></label>
+            <div class="lot-rule-preview" id="lotRulePreview"></div>
+            <label>Start serial<input id="startSerial" type="number" min="1" required value="101"></label>
+            <label>End serial<input id="endSerial" type="number" min="1" required value="101"></label>
+            <div class="batch-count wide" id="batchCount">1 label will be generated.</div>
+          </form>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Live Label Preview</h2>
+              <button class="secondary" id="previewFromForm">Refresh</button>
+            </div>
+            <div class="preview-stage">
+              <div id="singleLabelPreview"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="labels">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Label Preview</h2>
+            <div class="button-row">
+              <button class="secondary" id="printLabels">Print / Save PDF</button>
+              <button class="secondary" id="downloadFirstPng">Download First Label</button>
+            </div>
+          </div>
+          <div class="label-sheet" id="labelSheet"></div>
+          <div class="saved-batches">
+            <h3>Saved Batches</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Lot</th>
+                    <th>Serial range</th>
+                    <th>Labels</th>
+                    <th>Created</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="batchRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="certificates">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>COA Records</h2>
+            <div class="filters">
+              <input id="certCatalogue" placeholder="Catalogue number">
+              <input id="certLot" placeholder="Lot number">
+              <input id="certSerial" type="number" placeholder="Serial">
+              <button id="searchCertificates">Search</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Certificate</th>
+                  <th>Product</th>
+                  <th>Lot</th>
+                  <th>Serial</th>
+                  <th>Verification</th>
+                  <th>QR DXL</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="certificateRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="labelTemplateNode">
+    <div class="om-label">
+      <div class="label-logo">
+        <span>OMSONS</span>
+        <small>GERMANY</small>
+      </div>
+      <div class="label-copy">
+        <strong data-field="productName"></strong>
+        <span>Cat. No.: <b data-field="catalogueNumber"></b></span>
+        <span><b data-field="membranePore"></b></span>
+        <div class="label-gap"></div>
+        <span>Lot. No.: <b data-field="lotNumber"></b></span>
+        <span>Membranes : <b data-field="membrane"></b></span>
+        <span>Serial No.: <b data-field="serialNumber"></b></span>
+      </div>
+      <div class="qr-zone">
+        <img data-field="qrImagePath" alt="QR code">
+        <small>Scan for COA</small>
+      </div>
+    </div>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+
+
+

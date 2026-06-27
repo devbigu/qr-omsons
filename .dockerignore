@@ -1,0 +1,9 @@
+.git
+node_modules
+.env
+*.log
+data/certificates
+scripts/__pycache__
+*.pyc
+*.Zone.Identifier
+.agents
