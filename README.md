@@ -41,6 +41,8 @@ Set these variables on your host:
 - `PUBLIC_BASE_URL=https://your-domain.example`, required for QR codes to point at the deployed site
 - `MONGODB_URI`, recommended so labels and certificates persist across deploys
 - `MONGODB_DB=omsons_qr`, optional
+- `MONGODB_FAMILY=4`, recommended on managed hosts to avoid IPv6 connection issues
+- `MONGODB_CONNECT_TIMEOUT_MS=10000` and `MONGODB_SERVER_SELECTION_TIMEOUT_MS=10000`, optional
 - `STORAGE_MODE=json`, optional local fallback override; do not use for production persistence
 - `DATA_DIR`, optional writable directory for JSON fallback storage and generated PDFs
 - `PYTHON=python3`, or the platform's Python path
@@ -63,6 +65,16 @@ npm start
 ```
 
 Health check path: `/api/health`.
+
+The process starts before the first database connection finishes and retries a failed
+MongoDB connection. `/api/health` returns HTTP 503 until storage is ready instead of
+crashing and restarting the entire service.
+
+## Vercel Deploy
+
+`server.js` exports Express for Vercel while still starting a normal port listener on
+Node hosts. Vercel serves files from `public/` through its CDN. Configure the same
+environment variables in the Vercel project and deploy from the repository root.
 
 ## Docker Deploy
 

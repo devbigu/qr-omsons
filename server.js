@@ -410,7 +410,15 @@ class MongoStore {
   }
 
   async init() {
-    this.client = new MongoClient(this.uri);
+    this.client = new MongoClient(this.uri, {
+      connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 10000),
+      serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 10000),
+      maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE || 10),
+      minPoolSize: 0,
+      retryReads: true,
+      retryWrites: true,
+      family: Number(process.env.MONGODB_FAMILY || 4)
+    });
     await this.client.connect();
     this.db = this.client.db(process.env.MONGODB_DB || "omsons_qr");
     await this.db.collection("products").createIndex({ catalogueNumber: 1 }, { unique: true });
@@ -466,6 +474,46 @@ class MongoStore {
 }
 
 let store;
+let storeInitPromise;
+let storeInitError;
+let nextStoreRetryAt = 0;
+
+function createStore() {
+  if (process.env.STORAGE_MODE === 'json') return new JsonStore(dataFile);
+  if (process.env.MONGODB_URI) return new MongoStore(process.env.MONGODB_URI);
+  return new JsonStore(dataFile);
+}
+
+function storageErrorSummary(error) {
+  return `${error?.name || "Error"}: ${error?.message || "Unknown storage error"}`;
+}
+
+async function initialiseStore() {
+  if (store) return store;
+  if (storeInitPromise) return storeInitPromise;
+
+  if (storeInitError && Date.now() < nextStoreRetryAt) throw storeInitError;
+
+  const candidate = createStore();
+  storeInitPromise = candidate.init()
+    .then(() => {
+      store = candidate;
+      storeInitError = undefined;
+      nextStoreRetryAt = 0;
+      return store;
+    })
+    .catch(async (error) => {
+      storeInitError = error;
+      nextStoreRetryAt = Date.now() + Number(process.env.STORAGE_RETRY_DELAY_MS || 5000);
+      storeInitPromise = undefined;
+      if (candidate instanceof MongoStore && candidate.client) {
+        await candidate.client.close().catch(() => {});
+      }
+      throw error;
+    });
+
+  return storeInitPromise;
+}
 
 function safeCertificateFileName(certificateId) {
   return String(certificateId || "certificate").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -504,13 +552,34 @@ async function findProductByCatalogue(catalogueNumber) {
   return store.findOne("products", { catalogueNumber: normalised });
 }
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    storage: store instanceof MongoStore ? "mongodb" : "json",
-    cloudinary: hasCloudinaryConfig() ? "configured" : "not_configured"
-  });
-});
+app.get("/api/health", asyncRoute(async (req, res) => {
+  try {
+    await initialiseStore();
+    res.json({
+      ok: true,
+      storage: store instanceof MongoStore ? "mongodb" : "json",
+      cloudinary: hasCloudinaryConfig() ? "configured" : "not_configured"
+    });
+  } catch (error) {
+    console.error("Storage health check failed:", storageErrorSummary(error));
+    res.status(503).json({
+      ok: false,
+      storage: "unavailable",
+      cloudinary: hasCloudinaryConfig() ? "configured" : "not_configured",
+      error: "Database connection unavailable."
+    });
+  }
+}));
+
+app.use("/api", asyncRoute(async (req, res, next) => {
+  try {
+    await initialiseStore();
+    next();
+  } catch (error) {
+    console.error("Storage initialization failed:", storageErrorSummary(error));
+    res.status(503).json({ error: "Database connection unavailable. Please try again shortly." });
+  }
+}));
 
 app.get("/api/dashboard", asyncRoute(async (req, res) => {
   const [products, batches, labels, certificates] = await Promise.all([
@@ -912,16 +981,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || "Unexpected server error." });
 });
 
-(async () => {
-  store = process.env.STORAGE_MODE === "json"
-    ? new JsonStore(dataFile)
-    : process.env.MONGODB_URI
-      ? new MongoStore(process.env.MONGODB_URI)
-      : new JsonStore(dataFile);
-  await store.init();
+function startServer() {
   const server = app.listen(port, () => {
     console.log(`Omsons QR label app running on port ${port}`);
   });
+
+  initialiseStore()
+    .then(() => console.log(`Storage ready: ${store instanceof MongoStore ? "mongodb" : "json"}`))
+    .catch((error) => {
+      console.error("Initial storage connection failed; the app will retry:", storageErrorSummary(error));
+    });
 
   const shutdown = async (signal) => {
     console.log(`${signal} received, shutting down...`);
@@ -935,10 +1004,15 @@ app.use((err, req, res, next) => {
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
-})().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+
+  return server;
+}
+
+if (require.main === module) startServer();
+
+module.exports = app;
+module.exports.initialiseStore = initialiseStore;
+module.exports.startServer = startServer;
 
 
 
