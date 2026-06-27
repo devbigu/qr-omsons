@@ -3,10 +3,7 @@
   "functions": {
     "server.js": {
       "maxDuration": 60,
-      "includeFiles": [
-        "data/templates/**",
-        "scripts/**"
-      ]
+      "includeFiles": "{data/templates/**,scripts/**}"
     }
   }
 }
