@@ -796,6 +796,7 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
       createdAt: now()
     });
     await store.insert("certificates", {
+      batchId: batch.batchId,
       certificateId,
       productId: product._id,
       lotId: lot._id,
@@ -853,17 +854,43 @@ app.get("/api/qr-labels", asyncRoute(async (req, res) => {
     (!batchId || label.batchId === batchId)));
 }));
 
+async function cleanupLabelArtifacts(labels) {
+  const warnings = [];
+  const chunkSize = 10;
+
+  for (let index = 0; index < labels.length; index += chunkSize) {
+    const tasks = labels.slice(index, index + chunkSize).flatMap((label) => {
+      const labelTasks = [
+        destroyCloudinaryAsset(label.qrImagePublicId, "image"),
+        destroyCloudinaryAsset(label.qrDxlPublicId, "raw")
+      ];
+
+      if (label.certificateId) {
+        const safeName = safeCertificateFileName(label.certificateId);
+        labelTasks.push(
+          fs.rm(path.join(certificateOutputDir, `${safeName}.pdf`), { force: true }),
+          fs.rm(path.join(certificateOutputDir, `${safeName}.json`), { force: true })
+        );
+      }
+
+      return labelTasks;
+    });
+
+    const results = await Promise.allSettled(tasks);
+    results
+      .filter((result) => result.status === "rejected")
+      .forEach((result) => warnings.push(result.reason?.message || String(result.reason)));
+  }
+
+  warnings.forEach((warning) => console.warn(`Artifact cleanup warning: ${warning}`));
+  return warnings;
+}
+
 app.delete("/api/qr-labels/:id", asyncRoute(async (req, res) => {
   const label = await store.findOne("qr_labels", { _id: req.params.id });
   if (!label) return res.status(404).json({ error: "Label not found." });
 
-  const cloudCleanup = await Promise.allSettled([
-    destroyCloudinaryAsset(label.qrImagePublicId, "image"),
-    destroyCloudinaryAsset(label.qrDxlPublicId, "raw")
-  ]);
-  cloudCleanup
-    .filter((result) => result.status === "rejected")
-    .forEach((result) => console.warn(`Cloudinary cleanup warning: ${result.reason?.message || result.reason}`));
+  const cleanupWarnings = await cleanupLabelArtifacts([label]);
 
   await store.delete("qr_labels", req.params.id);
   await store.deleteMany("certificates", { certificateId: label.certificateId });
@@ -881,9 +908,38 @@ app.delete("/api/qr-labels/:id", asyncRoute(async (req, res) => {
     certificateId: label.certificateId,
     catalogueNumber: label.catalogueNumber,
     lotNumber: label.lotNumber,
-    serialNumber: label.serialNumber
+    serialNumber: label.serialNumber,
+    cleanupWarnings: cleanupWarnings.length
   });
 }));
+
+app.delete("/api/qr-batches/:batchId", asyncRoute(async (req, res) => {
+  const batchId = req.params.batchId?.trim();
+  const batch = await store.findOne("qr_batches", { batchId });
+  if (!batch) return res.status(404).json({ error: "Batch not found." });
+
+  const labels = await store.list("qr_labels", { batchId });
+  const cleanupWarnings = await cleanupLabelArtifacts(labels);
+  let deletedCertificates = await store.deleteMany("certificates", { batchId });
+
+  for (const label of labels) {
+    if (label.certificateId) {
+      deletedCertificates += await store.deleteMany("certificates", { certificateId: label.certificateId });
+    }
+  }
+
+  const deletedLabels = await store.deleteMany("qr_labels", { batchId });
+  await store.delete("qr_batches", batch._id);
+
+  res.json({
+    deleted: true,
+    batchId,
+    deletedLabels,
+    deletedCertificates,
+    cleanupWarnings: cleanupWarnings.length
+  });
+}));
+
 app.get("/api/certificates/search", asyncRoute(async (req, res) => {
   const certificates = await store.list("certificates");
   const catalogueNumber = normaliseCatalogue(req.query.catalogueNumber || "");

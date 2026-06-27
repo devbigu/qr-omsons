@@ -340,7 +340,12 @@ async function loadBatches() {
       <td>${html(batch.startSerial)}-${html(batch.endSerial)}</td>
       <td>${html(batch.quantity)}</td>
       <td>${html(batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-")}</td>
-      <td><button class="secondary compact" type="button" data-reprint-batch="${html(batch.batchId)}">Reprint</button></td>
+      <td>
+        <div class="button-row">
+          <button class="secondary compact" type="button" data-reprint-batch="${html(batch.batchId)}">Reprint</button>
+          <button class="danger compact" type="button" data-delete-batch="${html(batch.batchId)}" data-batch-quantity="${html(batch.quantity)}">Delete</button>
+        </div>
+      </td>
     </tr>
   `).join("") || `<tr><td colspan="6">No saved batches yet.</td></tr>`;
 }
@@ -352,6 +357,22 @@ async function reprintBatch(batchId) {
   renderLabels(labels);
   fillLabel($("#singleLabelPreview"), labels[0]);
   showScreen("labels");
+}
+
+async function deleteBatch(batchId, quantity) {
+  const ok = confirm(
+    `Delete this saved batch and its ${quantity || "remaining"} label(s)? ` +
+    "This also removes any remaining COA records and QR assets."
+  );
+  if (!ok) return;
+
+  const result = await api(`/api/qr-batches/${encodeURIComponent(batchId)}`, { method: "DELETE" });
+  state.generatedLabels = state.generatedLabels.filter((label) => label.batchId !== batchId);
+  renderLabels(state.generatedLabels);
+  if (state.generatedLabels[0]) fillLabel($("#singleLabelPreview"), state.generatedLabels[0]);
+  else previewFromForm();
+  await Promise.all([loadDashboard(), searchCertificates(), loadBatches()]);
+  toast(`Batch deleted (${result.deletedLabels} label${result.deletedLabels === 1 ? "" : "s"} removed).`);
 }
 
 async function deleteLabel(labelId, certificateId) {
@@ -432,6 +453,14 @@ function bindEvents() {
   $("#printLabels").addEventListener("click", () => window.print());
   $("#downloadFirstPng").addEventListener("click", downloadFirstLabel);
   document.addEventListener("click", (event) => {
+    const deleteBatchButton = event.target.closest("[data-delete-batch]");
+    if (deleteBatchButton) {
+      deleteBatch(
+        deleteBatchButton.dataset.deleteBatch,
+        deleteBatchButton.dataset.batchQuantity
+      ).catch((error) => toast(error.message));
+      return;
+    }
     const reprintButton = event.target.closest("[data-reprint-batch]");
     if (reprintButton) {
       reprintBatch(reprintButton.dataset.reprintBatch).catch((error) => toast(error.message));

@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "check": "node --check server.js && node --check public/app.js && node --check public/coa.js && node --check public/catalogue.js",
+    "test": "node --test test/*.test.js",
     "predeploy": "npm run check"
   },
   "dependencies": {
