@@ -12,9 +12,11 @@
     "predeploy": "npm run check"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "express": "^4.19.2",
     "mongodb": "^6.8.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.2"
   },
   "engines": {
     "node": ">=18"

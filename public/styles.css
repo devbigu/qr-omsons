@@ -469,6 +469,76 @@ h2 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.label-action-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lot-link {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font-size: inherit;
+}
+
+.lot-link:hover {
+  text-decoration: underline;
+}
+
+.download-menu-trigger {
+  width: 34px;
+  min-width: 34px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.download-popover {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  min-width: 170px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.download-popover a {
+  padding: 9px 10px;
+  border-radius: 5px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.download-popover a:hover {
+  background: var(--surface);
+}
+
+.lot-view-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #b9ddf0;
+  border-radius: 6px;
+  background: #eef8fd;
+  color: #155f87;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+[hidden] {
+  display: none !important;
+}
 
 .empty-state {
   color: var(--muted);

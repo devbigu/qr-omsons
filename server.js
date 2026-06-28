@@ -1,5 +1,7 @@
+const archiver = require("archiver");
 const express = require("express");
 const QRCode = require("qrcode");
+const sharp = require("sharp");
 const { MongoClient, ObjectId } = require("mongodb");
 const { promises: fs } = require("fs");
 const fsSync = require("fs");
@@ -566,6 +568,84 @@ function safeCertificateFileName(certificateId) {
   return String(certificateId || "certificate").replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+function safeAssetFilePart(value, fallback = "qr") {
+  const safe = String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return safe || fallback;
+}
+
+function labelAssetBaseName(label) {
+  return [
+    safeAssetFilePart(label.catalogueNumber, "catalogue"),
+    safeAssetFilePart(label.lotNumber, "lot"),
+    safeAssetFilePart(label.serialNumber, "serial")
+  ].join("_");
+}
+
+function qrImageDeliveryUrl(secureUrl, format) {
+  if (format !== "jpg") return secureUrl;
+  return secureUrl
+    .replace("/upload/", "/upload/f_jpg,q_auto:good/")
+    .replace(/\.[a-z0-9]+(\?.*)?$/i, ".jpg$1");
+}
+
+async function readQrPngBuffer(label) {
+  const source = label.qrImageCloudinaryUrl || label.qrImagePath || "";
+  if (!source) throw new Error(`QR PNG is unavailable for ${label.certificateId || "this label"}.`);
+
+  const dataUrl = source.match(/^data:([^;,]+)?(;base64)?,([\s\S]*)$/i);
+  if (dataUrl) {
+    return dataUrl[2]
+      ? Buffer.from(dataUrl[3], "base64")
+      : Buffer.from(decodeURIComponent(dataUrl[3]), "utf8");
+  }
+
+  if (/^https?:\/\//i.test(source)) {
+    const response = await fetch(source);
+    if (!response.ok) {
+      throw new Error(`Unable to fetch QR PNG for ${label.certificateId || "this label"}.`);
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  const normalizedSource = source.replace(/^file:\/\//i, "");
+  const candidates = path.isAbsolute(normalizedSource)
+    ? [normalizedSource]
+    : [
+      path.resolve(__dirname, normalizedSource),
+      path.resolve(__dirname, "public", normalizedSource.replace(/^[/\\]+/, ""))
+    ];
+
+  for (const candidate of candidates) {
+    try {
+      return await fs.readFile(candidate);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+
+  throw new Error(`QR PNG is unavailable for ${label.certificateId || "this label"}.`);
+}
+
+async function qrImageBuffer(label, format) {
+  const png = await readQrPngBuffer(label);
+  return format === "jpg"
+    ? sharp(png).jpeg({ quality: 90 }).toBuffer()
+    : png;
+}
+
+function filterQrLabels(labels, query = {}) {
+  const catalogueNumber = normaliseCatalogue(query.catalogueNumber || "");
+  const lotNumber = query.lotNumber?.toString().trim().toUpperCase();
+  const batchId = query.batchId?.toString().trim();
+  return labels.filter((label) =>
+    (!catalogueNumber || label.catalogueNumber === catalogueNumber) &&
+    (!lotNumber || label.lotNumber === lotNumber) &&
+    (!batchId || label.batchId === batchId));
+}
+
 const certificateTemplateCache = new Map();
 
 function isSterileCertificate(certificate) {
@@ -992,13 +1072,72 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
 
 app.get("/api/qr-labels", asyncRoute(async (req, res) => {
   const labels = await store.list("qr_labels");
-  const catalogueNumber = normaliseCatalogue(req.query.catalogueNumber || "");
+  res.json(filterQrLabels(labels, req.query));
+}));
+
+app.get("/api/qr-labels/zip", asyncRoute(async (req, res) => {
   const lotNumber = req.query.lotNumber?.toString().trim().toUpperCase();
   const batchId = req.query.batchId?.toString().trim();
-  res.json(labels.filter((label) =>
-    (!catalogueNumber || label.catalogueNumber === catalogueNumber) &&
-    (!lotNumber || label.lotNumber === lotNumber) &&
-    (!batchId || label.batchId === batchId)));
+  const format = req.query.format?.toString().trim().toLowerCase() || "png";
+
+  if (!lotNumber && !batchId) {
+    return res.status(400).json({ error: "Provide lotNumber or batchId." });
+  }
+  if (!["png", "jpg"].includes(format)) {
+    return res.status(400).json({ error: "Use png or jpg format." });
+  }
+
+  const allLabels = await store.list("qr_labels");
+  const labels = filterQrLabels(allLabels, req.query).sort((left, right) =>
+    String(left.catalogueNumber || "").localeCompare(String(right.catalogueNumber || "")) ||
+    String(left.lotNumber || "").localeCompare(String(right.lotNumber || "")) ||
+    Number(left.serialNumber) - Number(right.serialNumber));
+
+  if (!labels.length) return res.status(404).json({ error: "No matching labels found." });
+
+  const catalogues = [...new Set(labels.map((label) => label.catalogueNumber).filter(Boolean))];
+  const lots = [...new Set(labels.map((label) => label.lotNumber).filter(Boolean))];
+  const cataloguePart = safeAssetFilePart(catalogues.length === 1 ? catalogues[0] : "multiple", "catalogue");
+  const lotPart = safeAssetFilePart(lotNumber || (lots.length === 1 ? lots[0] : "multiple"), "lot");
+  const serials = labels.map((label) => Number(label.serialNumber)).filter(Number.isFinite);
+  const startSerial = serials.length ? Math.min(...serials) : labels[0].serialNumber;
+  const endSerial = serials.length ? Math.max(...serials) : labels.at(-1).serialNumber;
+  const zipName = batchId
+    ? `${cataloguePart}_${lotPart}_${safeAssetFilePart(startSerial)}-${safeAssetFilePart(endSerial)}.zip`
+    : `${cataloguePart}_${lotPart}_all.zip`;
+
+  res.set("Content-Type", "application/zip");
+  res.set("Content-Disposition", `attachment; filename="${zipName}"`);
+
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  archive.on("warning", (error) => {
+    if (error.code !== "ENOENT") {
+      console.warn(`ZIP warning: ${error.message}`);
+    }
+  });
+  archive.on("error", (error) => {
+    if (!res.destroyed) res.destroy(error);
+  });
+  res.once("close", () => {
+    if (!res.writableEnded) archive.abort();
+  });
+  archive.pipe(res);
+
+  try {
+    for (const label of labels) {
+      const image = await qrImageBuffer(label, format);
+      archive.append(image, { name: `${labelAssetBaseName(label)}.${format}` });
+    }
+    await archive.finalize();
+  } catch (error) {
+    archive.abort();
+    if (res.headersSent) {
+      console.error("ZIP generation failed:", error);
+      res.destroy(error);
+      return;
+    }
+    throw error;
+  }
 }));
 
 async function cleanupLabelArtifacts(labels) {
@@ -1161,6 +1300,27 @@ app.get("/api/catalogue/:certificateId", asyncRoute(async (req, res) => {
   });
 }));
 
+app.get("/api/certificates/:certificateId/qr.:format", asyncRoute(async (req, res) => {
+  const format = req.params.format?.toLowerCase();
+  if (!["png", "jpg"].includes(format)) {
+    return res.status(400).json({ error: "Use png or jpg." });
+  }
+
+  const label = await store.findOne("qr_labels", { certificateId: req.params.certificateId });
+  if (!label) return res.status(404).json({ error: "QR label not found." });
+
+  const fileName = `${labelAssetBaseName(label)}.${format}`;
+  res.set("Content-Disposition", `attachment; filename="${fileName}"`);
+
+  if (hasCloudinaryConfig() && label.qrImageCloudinaryUrl) {
+    return res.redirect(302, qrImageDeliveryUrl(label.qrImageCloudinaryUrl, format));
+  }
+
+  const image = await qrImageBuffer(label, format);
+  res.set("Content-Type", format === "jpg" ? "image/jpeg" : "image/png");
+  res.send(image);
+}));
+
 app.get("/api/certificates/:certificateId/dxf", asyncRoute(async (req, res) => {
   const certificate = await store.findOne("certificates", { certificateId: req.params.certificateId });
   if (!certificate) return res.status(404).json({ error: "Certificate not found." });
@@ -1169,7 +1329,7 @@ app.get("/api/certificates/:certificateId/dxf", asyncRoute(async (req, res) => {
   const qrUrl = label?.qrUrl || certificate.verificationUrl ||
     `${publicBaseUrl(req)}/coa/${encodeURIComponent(certificate.certificateId)}`;
   const dxf = buildQrDxf({ certificateId: certificate.certificateId, qrUrl });
-  const fileName = `${safeCertificateFileName(certificate.certificateId)}.dxf`;
+  const fileName = `${labelAssetBaseName(label || certificate)}.dxf`;
 
   res.set("Content-Type", "image/vnd.dxf");
   res.set("Content-Disposition", `attachment; filename="${fileName}"`);

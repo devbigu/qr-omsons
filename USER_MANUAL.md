@@ -72,20 +72,21 @@ Each product can have a different product code.
 After generation, the software opens **Label Preview**.
 
 1. Check the product, catalogue, lot, serial, and QR details.
-2. Select **Print / Save PDF**.
-3. Choose the label printer or **Save as PDF** in the system print dialog.
-4. Use 100% scale unless the physical label template requires another setting.
-
-Use **Download First Label** when a PNG file of the first label is required.
+2. Select the **three-dot menu (⋮)** beside any label.
+3. Choose **Download PNG**, **Download JPG**, or **Download DXF** for that label.
+4. Select **Download All (.zip)** to download every QR image in the current batch.
+5. Select **Print / Save PDF** when printed labels are required.
+6. Choose the label printer or **Save as PDF** in the system print dialog.
+7. Use 100% scale unless the physical label template requires another setting.
 
 ## 7. Reprint a Batch
 
 1. Open **Label Preview**.
 2. Find the batch under **Saved Batches**.
 3. Select **Reprint**.
-4. Confirm the labels, then select **Print / Save PDF**.
+4. Confirm the labels, then print them or select **Download All (.zip)**.
 
-Reprinting reuses the saved QR images and does not create duplicate database or Cloudinary records.
+Reprinting and ZIP download reuse the saved QR images and do not create duplicate database or Cloudinary records.
 
 ## 8. Scan and Verify a QR Code
 
@@ -99,9 +100,13 @@ The QR destination uses the public application URL configured by the administrat
 
 1. Open **COA Records**.
 2. Search by catalogue number, lot number, serial number, or a combination.
-3. Select **Open COA** to view the certificate.
-4. The certificate opens directly as a browser-friendly WebP image.
-5. Select **Open DXF** to access the stored DXF file.
+3. Use the **three-dot menu (⋮)** to download PNG, JPG, or DXF for one label.
+4. Select **Open COA** to view the certificate as WebP.
+5. Select a lot number to open every label generated for that lot, including labels from multiple batches.
+6. Use **Download All (.zip)** to download the complete lot.
+7. Copy the resulting `?id=qr-<lotNumber>` URL when the lot view needs to be shared.
+
+> **Access warning:** the application currently has no authentication. Anyone with a shared lot URL can view and download that lot's labels.
 
 ## 10. Delete an Incorrect Label
 

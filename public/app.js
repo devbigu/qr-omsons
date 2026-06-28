@@ -1,7 +1,8 @@
 const state = {
   products: [],
   currentProduct: null,
-  generatedLabels: []
+  generatedLabels: [],
+  currentBatchId: ""
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -39,6 +40,113 @@ function showScreen(id) {
   $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.id === id));
   $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.screen === id));
 }
+let activeDownloadButton = null;
+
+function downloadMenuButton(record) {
+  const certificateId = record?.certificateId || "";
+  if (!certificateId) return "-";
+  return `
+    <button
+      class="download-menu-trigger"
+      type="button"
+      data-download-menu="${html(certificateId)}"
+      aria-label="Download QR files for ${html(certificateId)}"
+      aria-haspopup="menu"
+      aria-expanded="false"
+    >&#8942;</button>
+  `;
+}
+
+function closeDownloadMenu() {
+  const menu = $("#qrDownloadMenu");
+  if (!menu) return;
+  menu.hidden = true;
+  menu.replaceChildren();
+  if (activeDownloadButton) activeDownloadButton.setAttribute("aria-expanded", "false");
+  activeDownloadButton = null;
+}
+
+function openDownloadMenu(button) {
+  const certificateId = button.dataset.downloadMenu;
+  if (!certificateId) return;
+  if (activeDownloadButton === button && !$("#qrDownloadMenu").hidden) {
+    closeDownloadMenu();
+    return;
+  }
+
+  closeDownloadMenu();
+  const encodedId = encodeURIComponent(certificateId);
+  const menu = $("#qrDownloadMenu");
+  menu.innerHTML = `
+    <a role="menuitem" data-download-link href="/api/certificates/${encodedId}/qr.png">Download PNG</a>
+    <a role="menuitem" data-download-link href="/api/certificates/${encodedId}/qr.jpg">Download JPG</a>
+    <a role="menuitem" data-download-link href="/api/certificates/${encodedId}/dxf">Download DXF</a>
+  `;
+  menu.hidden = false;
+  activeDownloadButton = button;
+  button.setAttribute("aria-expanded", "true");
+
+  const buttonRect = button.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.max(8, Math.min(buttonRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+  const below = buttonRect.bottom + 6;
+  const top = below + menuRect.height <= window.innerHeight - 8
+    ? below
+    : Math.max(8, buttonRect.top - menuRect.height - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function startDownload(url) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function lotNumberFromLocation() {
+  const id = new URLSearchParams(window.location.search).get("id") || "";
+  if (!/^qr-/i.test(id)) return "";
+  return id.slice(3).trim().toUpperCase();
+}
+
+function setLotViewerUrl(lotNumber, mode = "push") {
+  const lot = String(lotNumber || "").trim().toUpperCase();
+  if (!lot) return;
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.searchParams.set("id", `qr-${lot}`);
+  const method = mode === "replace" ? "replaceState" : "pushState";
+  window.history[method]({ lotNumber: lot }, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function clearLotViewerUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("id")) return;
+  url.searchParams.delete("id");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function openLotViewer(lotNumber, historyMode = "push") {
+  const lot = String(lotNumber || "").trim().toUpperCase();
+  if (!lot) return;
+  $("#certCatalogue").value = "";
+  $("#certLot").value = lot;
+  $("#certSerial").value = "";
+  showScreen("certificates");
+  if (historyMode) setLotViewerUrl(lot, historyMode);
+  await searchCertificates();
+}
+
+function updateBatchZipButton(labels) {
+  const batchIds = [...new Set(labels.map((label) => label.batchId).filter(Boolean))];
+  state.currentBatchId = batchIds.length === 1 ? batchIds[0] : "";
+  const button = $("#downloadBatchZip");
+  button.hidden = !state.currentBatchId;
+  button.dataset.batchId = state.currentBatchId;
+}
 
 function fillLabel(target, label) {
   const node = $("#labelTemplateNode").content.firstElementChild.cloneNode(true);
@@ -75,6 +183,7 @@ function previewFromForm() {
 function renderLabels(labels) {
   const sheet = $("#labelSheet");
   sheet.replaceChildren();
+  updateBatchZipButton(labels);
   if (!labels.length) {
     sheet.innerHTML = `<div class="empty-state">No labels in this preview.</div>`;
     return;
@@ -89,7 +198,11 @@ function renderLabels(labels) {
     card.insertAdjacentHTML("beforeend", `
       <div class="label-actions">
         <span>${html(label.certificateId)}</span>
-        <button class="danger" type="button" data-delete-label="${html(label._id)}" data-certificate-id="${html(label.certificateId)}">Delete</button>
+        <div class="label-action-controls">
+          <button class="lot-link" type="button" data-view-lot="${html(label.lotNumber)}">Lot ${html(label.lotNumber)}</button>
+          ${downloadMenuButton(label)}
+          <button class="danger compact" type="button" data-delete-label="${html(label._id)}" data-certificate-id="${html(label.certificateId)}">Delete</button>
+        </div>
       </div>
     `);
     sheet.append(card);
@@ -311,32 +424,49 @@ async function generateLabels(event) {
   showScreen("labels");
 }
 
+function renderCertificateRows(rows) {
+  $("#certificateRows").innerHTML = rows.map((certificate) => `
+    <tr>
+      <td>${html(certificate.certificateId)}</td>
+      <td>${html(certificate.productName)}</td>
+      <td><button class="lot-link" type="button" data-view-lot="${html(certificate.lotNumber)}">${html(certificate.lotNumber)}</button></td>
+      <td>${html(certificate.serialNumber)}</td>
+      <td><a href="/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp" target="_blank" rel="noopener">Open COA</a></td>
+      <td>${downloadMenuButton(certificate)}</td>
+      <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
+    </tr>
+  `).join("") || `<tr><td colspan="7">No certificate records found.</td></tr>`;
+}
+
 async function searchCertificates() {
   const params = new URLSearchParams();
   if ($("#certCatalogue").value) params.set("catalogueNumber", $("#certCatalogue").value);
   if ($("#certLot").value) params.set("lotNumber", $("#certLot").value);
   if ($("#certSerial").value) params.set("serialNumber", $("#certSerial").value);
   const rows = await api(`/api/certificates/search?${params}`);
-  $("#certificateRows").innerHTML = rows.map((certificate) => `
-    <tr>
-      <td>${html(certificate.certificateId)}</td>
-      <td>${html(certificate.productName)}</td>
-      <td>${html(certificate.lotNumber)}</td>
-      <td>${html(certificate.serialNumber)}</td>
-      <td><a href="/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp" target="_blank" rel="noopener">Open COA</a></td>
-      <td>${certificate.qrDxfUrl ? `<a href="${html(certificate.qrDxfUrl)}" target="_blank" rel="noopener">Open DXF</a>` : "-"}</td>
-      <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
-    </tr>
-  `).join("") || `<tr><td colspan="7">No certificate records found.</td></tr>`;
-}
+  renderCertificateRows(rows);
 
+  const lotNumber = $("#certLot").value.trim().toUpperCase();
+  const lotZipButton = $("#downloadLotZip");
+  const lotViewerNote = $("#lotViewerNote");
+  lotZipButton.hidden = !lotNumber;
+  lotViewerNote.hidden = !lotNumber;
+  if (lotNumber) {
+    const zipParams = new URLSearchParams({ lotNumber });
+    if ($("#certCatalogue").value) zipParams.set("catalogueNumber", $("#certCatalogue").value);
+    lotZipButton.dataset.downloadUrl = `/api/qr-labels/zip?${zipParams}`;
+  } else {
+    delete lotZipButton.dataset.downloadUrl;
+  }
+  return rows;
+}
 async function loadBatches() {
   const batches = await api("/api/qr-batches");
   batches.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   $("#batchRows").innerHTML = batches.map((batch) => `
     <tr>
       <td><strong>${html(batch.productName || batch.catalogueNumber)}</strong><br>${html(batch.catalogueNumber)}</td>
-      <td>${html(batch.lotNumber || "-")}</td>
+      <td><button class="lot-link" type="button" data-view-lot="${html(batch.lotNumber)}">${html(batch.lotNumber || "-")}</button></td>
       <td>${html(batch.startSerial)}-${html(batch.endSerial)}</td>
       <td>${html(batch.quantity)}</td>
       <td>${html(batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-")}</td>
@@ -390,53 +520,11 @@ async function deleteLabel(labelId, certificateId) {
   toast("Label deleted.");
 }
 
-async function downloadFirstLabel() {
-  const label = state.generatedLabels[0];
-  if (!label) return toast("Generate at least one label first.");
-
-  const canvas = document.createElement("canvas");
-  const scale = 3;
-  canvas.width = 384 * scale;
-  canvas.height = 180 * scale;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(scale, scale);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, 384, 180);
-  ctx.strokeStyle = "#cfd5dc";
-  ctx.strokeRect(0.5, 0.5, 383, 179);
-  ctx.fillStyle = "#0789c9";
-  ctx.beginPath();
-  ctx.ellipse(53, 28, 35, 12.5, -0.12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = "900 13px Arial";
-  ctx.fillText("OMSONS", 24, 32);
-  ctx.fillStyle = "#1d72ad";
-  ctx.font = "800 10px Arial";
-  ctx.fillText("G E R M A N Y", 20, 54);
-  ctx.fillStyle = "#151515";
-  ctx.font = "900 16px Arial";
-  ctx.fillText(label.productName, 76, 66);
-  ctx.fillText(`Cat. No.: ${label.catalogueNumber}`, 76, 86);
-  ctx.fillText(`${label.membrane}: ${label.poreSize}`, 76, 106);
-  ctx.fillText(`Lot. No.: ${label.lotNumber}`, 76, 138);
-  ctx.fillText(`Membranes : ${label.membrane}`, 76, 158);
-  ctx.fillText(`Serial No.: ${label.serialNumber}`, 76, 178);
-  const qr = new Image();
-  qr.onload = () => {
-    ctx.drawImage(qr, 234, 102, 52, 52);
-    ctx.font = "800 9px Arial";
-    ctx.fillText("Scan for COA", 221, 166);
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `${label.certificateId}.png`;
-    link.click();
-  };
-  qr.src = label.qrImagePath;
-}
-
 function bindEvents() {
-  $$(".nav-button").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
+  $$(".nav-button").forEach((button) => button.addEventListener("click", () => {
+    showScreen(button.dataset.screen);
+    if (button.dataset.screen !== "certificates") clearLotViewerUrl();
+  }));
   $("#productSearch").addEventListener("input", renderProducts);
   $("#productForm").addEventListener("submit", saveProduct);
   $("#manufacturingDate").addEventListener("change", () => refreshLotNumber().catch((error) => toast(error.message)));
@@ -449,10 +537,39 @@ function bindEvents() {
   $("#endSerial").addEventListener("input", updateBatchCount);
   $("#previewFromForm").addEventListener("click", previewFromForm);
   $("#generateForm").addEventListener("submit", (event) => generateLabels(event).catch((error) => toast(error.message)));
-  $("#searchCertificates").addEventListener("click", () => searchCertificates().catch((error) => toast(error.message)));
+  $("#searchCertificates").addEventListener("click", () => {
+    const lotNumber = $("#certLot").value.trim();
+    if (lotNumber) setLotViewerUrl(lotNumber, "push");
+    else clearLotViewerUrl();
+    searchCertificates().catch((error) => toast(error.message));
+  });
   $("#printLabels").addEventListener("click", () => window.print());
-  $("#downloadFirstPng").addEventListener("click", downloadFirstLabel);
+  $("#downloadBatchZip").addEventListener("click", () => {
+    const batchId = $("#downloadBatchZip").dataset.batchId;
+    if (batchId) startDownload(`/api/qr-labels/zip?batchId=${encodeURIComponent(batchId)}`);
+  });
+  $("#downloadLotZip").addEventListener("click", () => {
+    const url = $("#downloadLotZip").dataset.downloadUrl;
+    if (url) startDownload(url);
+  });
+
   document.addEventListener("click", (event) => {
+    const menuButton = event.target.closest("[data-download-menu]");
+    if (menuButton) {
+      openDownloadMenu(menuButton);
+      return;
+    }
+    if (event.target.closest("[data-download-link]")) {
+      window.setTimeout(closeDownloadMenu, 0);
+      return;
+    }
+    if (!event.target.closest("#qrDownloadMenu")) closeDownloadMenu();
+
+    const lotButton = event.target.closest("[data-view-lot]");
+    if (lotButton) {
+      openLotViewer(lotButton.dataset.viewLot, "push").catch((error) => toast(error.message));
+      return;
+    }
     const deleteBatchButton = event.target.closest("[data-delete-batch]");
     if (deleteBatchButton) {
       deleteBatch(
@@ -466,11 +583,29 @@ function bindEvents() {
       reprintBatch(reprintButton.dataset.reprintBatch).catch((error) => toast(error.message));
       return;
     }
-    const button = event.target.closest("[data-delete-label]");
-    if (!button) return;
-    deleteLabel(button.dataset.deleteLabel, button.dataset.certificateId).catch((error) => toast(error.message));
+    const deleteButton = event.target.closest("[data-delete-label]");
+    if (!deleteButton) return;
+    deleteLabel(deleteButton.dataset.deleteLabel, deleteButton.dataset.certificateId)
+      .catch((error) => toast(error.message));
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeDownloadMenu();
+  });
+  window.addEventListener("resize", closeDownloadMenu);
+  window.addEventListener("scroll", closeDownloadMenu, true);
+  window.addEventListener("popstate", () => {
+    const lotNumber = lotNumberFromLocation();
+    if (lotNumber) {
+      openLotViewer(lotNumber, null).catch((error) => toast(error.message));
+      return;
+    }
+    $("#certLot").value = "";
+    showScreen("dashboard");
+    searchCertificates().catch((error) => toast(error.message));
   });
 }
+
 async function boot() {
   bindEvents();
   const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -480,7 +615,11 @@ async function boot() {
   await refreshLotNumber().catch(() => {});
   updateBatchCount();
   previewFromForm();
-  await Promise.all([searchCertificates(), loadBatches()]);
+  await loadBatches();
+
+  const initialLot = lotNumberFromLocation();
+  if (initialLot) await openLotViewer(initialLot, "replace");
+  else await searchCertificates();
 }
 boot().catch((error) => toast(error.message));
 

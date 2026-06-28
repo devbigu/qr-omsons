@@ -16,6 +16,15 @@ See [APP_CONTEXT.md](APP_CONTEXT.md) for the complete architecture, data model, 
 
 Each QR opens its WebP certificate image directly, without a format chooser or print prompt. Generation uploads the DXF asset first and the scannable PNG image second, then stores their Cloudinary URLs with the label record.
 
+## QR Downloads and Lot Viewer
+
+- Every label exposes one overflow menu with PNG, JPG, and DXF downloads.
+- `GET /api/certificates/:certificateId/qr.png` returns the stored QR PNG.
+- `GET /api/certificates/:certificateId/qr.jpg` redirects through Cloudinary when available or converts PNG to JPG with Sharp.
+- `GET /api/qr-labels/zip?batchId=...` streams all QR images for one batch.
+- `GET /api/qr-labels/zip?lotNumber=...` streams labels across every batch in the lot.
+- Opening `/?id=qr-<lotNumber>` loads the lot-wise COA Records view directly.
+
 ## Requirements
 
 - Node.js 18 or newer
@@ -100,3 +109,5 @@ For production, pass a real `PUBLIC_BASE_URL` and `MONGODB_URI`.
 - The public COA route `/coa/:certificateId` redirects directly to the WebP certificate image for compatibility with existing labels.
 - Certificate images are generated lazily from the official template and delivered through Cloudinary as WebP or JPEG.
 - The PDF template lives at `data/templates/syringe-filter-certificate.pdf`.
+- ZIP archives are streamed with Archiver and do not create temporary files.
+- **Security:** there is no authentication. Anyone with a shareable `?id=qr-<lotNumber>` URL can view and download that lot's labels.

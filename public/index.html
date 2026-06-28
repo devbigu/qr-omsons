@@ -215,7 +215,7 @@
             <h2>Label Preview</h2>
             <div class="button-row">
               <button class="secondary" id="printLabels">Print / Save PDF</button>
-              <button class="secondary" id="downloadFirstPng">Download First Label</button>
+              <button class="secondary" id="downloadBatchZip" type="button" hidden>Download All (.zip)</button>
             </div>
           </div>
           <div class="label-sheet" id="labelSheet"></div>
@@ -249,8 +249,12 @@
               <input id="certLot" placeholder="Lot number">
               <input id="certSerial" type="number" placeholder="Serial">
               <button id="searchCertificates">Search</button>
+              <button class="secondary" id="downloadLotZip" type="button" hidden>Download All (.zip)</button>
             </div>
           </div>
+          <p class="lot-view-note" id="lotViewerNote" hidden>
+            Shareable lot view: anyone with this URL can access these labels and downloads.
+          </p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -260,7 +264,7 @@
                   <th>Lot</th>
                   <th>Serial</th>
                   <th>Verification</th>
-                  <th>QR DXF</th>
+                  <th>Downloads</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -271,6 +275,8 @@
       </section>
     </main>
   </div>
+
+  <div class="download-popover" id="qrDownloadMenu" role="menu" hidden></div>
 
   <template id="labelTemplateNode">
     <div class="om-label">
