@@ -45,6 +45,10 @@ const certificateTemplateFile = resolvePath(
   process.env.CERTIFICATE_TEMPLATE_FILE,
   path.join(__dirname, "data", "templates", "syringe-filter-certificate.pdf")
 );
+const certificateImageTemplates = {
+  sterile: path.join(__dirname, "data", "templates", "certificate-sterile.png"),
+  nonSterile: path.join(__dirname, "data", "templates", "certificate-non-sterile.png")
+};
 const certificateOutputDir = path.join(dataDir, "certificates");
 const certificateRenderScript = path.join(__dirname, "scripts", "render_certificate_pdf.py");
 const pythonExecutable = process.env.PYTHON || "python";
@@ -172,10 +176,6 @@ function xmlEscape(value) {
     .replaceAll("'", "&apos;");
 }
 
-function cdata(value) {
-  return String(value ?? "").replaceAll("]]>", "]]]]><![CDATA[>");
-}
-
 function cloudinarySignature(params) {
   const payload = Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
@@ -237,29 +237,76 @@ async function destroyCloudinaryAsset(publicId, resourceType = "image") {
   if (!response.ok) throw new Error(body.error?.message || "Cloudinary deletion failed.");
 }
 
-function buildQrDxl({ certificateId, qrUrl, svg }) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<qr-dxl version="1.0">
-  <certificateId>${xmlEscape(certificateId)}</certificateId>
-  <verificationUrl>${xmlEscape(qrUrl)}</verificationUrl>
-  <generatedAt>${now()}</generatedAt>
-  <qr format="svg"><![CDATA[${cdata(svg)}]]></qr>
-</qr-dxl>
-`;
+function dxfNumber(value) {
+  return Number(value.toFixed(6)).toString();
+}
+
+function dxfComment(value) {
+  return String(value ?? "").replace(/[\r\n]+/g, " ").replace(/[^\x20-\x7E]/g, "?");
+}
+
+function buildQrDxf({ certificateId, qrUrl }) {
+  const qr = QRCode.create(qrUrl, { errorCorrectionLevel: "M" });
+  const moduleCount = qr.modules.size;
+  const quietZone = 4;
+  const drawingSizeMm = 25;
+  const moduleSize = drawingSizeMm / (moduleCount + quietZone * 2);
+  const lines = [
+    "999", `QR code for ${dxfComment(certificateId)}`,
+    "999", `Verification URL: ${dxfComment(qrUrl)}`,
+    "0", "SECTION",
+    "2", "HEADER",
+    "9", "$ACADVER",
+    "1", "AC1009",
+    "9", "$INSUNITS",
+    "70", "4",
+    "0", "ENDSEC",
+    "0", "SECTION",
+    "2", "ENTITIES"
+  ];
+
+  const addSolid = (startColumn, endColumn, row) => {
+    const x1 = (quietZone + startColumn) * moduleSize;
+    const x2 = (quietZone + endColumn) * moduleSize;
+    const y1 = (quietZone + moduleCount - row - 1) * moduleSize;
+    const y2 = y1 + moduleSize;
+    lines.push(
+      "0", "SOLID",
+      "8", "QR_DARK",
+      "10", dxfNumber(x1), "20", dxfNumber(y1), "30", "0",
+      "11", dxfNumber(x2), "21", dxfNumber(y1), "31", "0",
+      "12", dxfNumber(x1), "22", dxfNumber(y2), "32", "0",
+      "13", dxfNumber(x2), "23", dxfNumber(y2), "33", "0"
+    );
+  };
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    let runStart = -1;
+    for (let column = 0; column <= moduleCount; column += 1) {
+      const isDark = column < moduleCount && qr.modules.get(row, column);
+      if (isDark && runStart === -1) runStart = column;
+      if (!isDark && runStart !== -1) {
+        addSolid(runStart, column, row);
+        runStart = -1;
+      }
+    }
+  }
+
+  lines.push("0", "ENDSEC", "0", "EOF");
+  return `${lines.join("\n")}\n`;
 }
 
 async function createQrAssets(qrUrl, certificateId) {
   const qrOptions = { margin: 0, width: 240, errorCorrectionLevel: "M" };
-  const svg = await QRCode.toString(qrUrl, { ...qrOptions, type: "svg" });
-  const dxl = buildQrDxl({ certificateId, qrUrl, svg });
+  const dxf = buildQrDxf({ certificateId, qrUrl });
   const pngDataUrl = await QRCode.toDataURL(qrUrl, qrOptions);
   const assets = {
     qrImagePath: pngDataUrl,
     qrImageCloudinaryUrl: "",
     qrImagePublicId: "",
-    qrDxlUrl: "",
-    qrDxlPublicId: "",
-    qrDxlFormat: "dxl"
+    qrDxfUrl: "",
+    qrDxfPublicId: "",
+    qrDxfFormat: "dxf"
   };
 
   if (!hasCloudinaryConfig()) {
@@ -268,14 +315,14 @@ async function createQrAssets(qrUrl, certificateId) {
   }
 
   const safeId = safeCloudinaryId(certificateId);
-  const dxlUpload = await uploadToCloudinary(Buffer.from(dxl, "utf8"), {
+  const dxfUpload = await uploadToCloudinary(Buffer.from(dxf, "utf8"), {
     resourceType: "raw",
-    publicId: `qr/dxl/${safeId}.dxl`,
-    fileName: `${safeId}.dxl`,
-    contentType: "application/xml"
+    publicId: `qr/dxf/${safeId}.dxf`,
+    fileName: `${safeId}.dxf`,
+    contentType: "image/vnd.dxf"
   });
-  assets.qrDxlUrl = dxlUpload.secure_url || dxlUpload.url || "";
-  assets.qrDxlPublicId = dxlUpload.public_id || "";
+  assets.qrDxfUrl = dxfUpload.secure_url || dxfUpload.url || "";
+  assets.qrDxfPublicId = dxfUpload.public_id || "";
 
   const pngBuffer = Buffer.from(pngDataUrl.split(",")[1], "base64");
   const pngUpload = await uploadToCloudinary(pngBuffer, {
@@ -517,6 +564,106 @@ async function initialiseStore() {
 
 function safeCertificateFileName(certificateId) {
   return String(certificateId || "certificate").replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+const certificateTemplateCache = new Map();
+
+function isSterileCertificate(certificate) {
+  const value = String(certificate.certificateData?.sterilityType || "").trim();
+  return Boolean(value) && !/^non[\s-]?sterile$/i.test(value);
+}
+
+function formatCertificateDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function certificateSvgText(x, y, value, size = 24, maxChars = 44) {
+  let text = String(value ?? "").trim();
+  if (!text) return "";
+  if (text.length > maxChars) text = `${text.slice(0, maxChars - 1)}…`;
+  return `<text x="${x}" y="${y}" font-size="${size}">${xmlEscape(text)}</text>`;
+}
+
+async function buildCertificateSvg(certificate) {
+  const data = certificate.certificateData || {};
+  const sterile = isSterileCertificate(certificate);
+  const templatePath = sterile ? certificateImageTemplates.sterile : certificateImageTemplates.nonSterile;
+  let templateBase64 = certificateTemplateCache.get(templatePath);
+  if (!templateBase64) {
+    templateBase64 = (await fs.readFile(templatePath)).toString("base64");
+    certificateTemplateCache.set(templatePath, templateBase64);
+  }
+
+  const productStatus = sterile ? "Sterile" : "Non-Sterile";
+  const productMembrane = data.membrane || certificate.productName || "Nylon";
+  const productLine = `Product : ${productMembrane}, Syringe Filters, ${productStatus}`;
+  const fields = [
+    certificateSvgText(300, 364, data.company || "Omsons", 24, 28),
+    certificateSvgText(300, 404, data.poreSize, 24, 28),
+    certificateSvgText(300, 442, certificate.catalogueNumber, 24, 32),
+    certificateSvgText(300, 482, certificate.lotNumber, 24, 28),
+    sterile ? certificateSvgText(300, 520, formatCertificateDate(data.expiryDate), 24, 24) : "",
+    sterile ? certificateSvgText(300, 560, data.sterilizationMethod || data.sterilityType || "Sterile", 24, 30) : "",
+    certificateSvgText(810, 364, data.membrane, 24, 28),
+    certificateSvgText(810, 404, data.housing, 24, 28),
+    certificateSvgText(810, 442, data.filterDiameter, 24, 28),
+    certificateSvgText(810, 482, data.burstPressure, 24, 28),
+    certificateSvgText(810, 520, data.holdupVolume, 24, 28)
+  ].join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1227" height="1720" viewBox="0 0 1227 1720">
+  <image width="1227" height="1720" href="data:image/png;base64,${templateBase64}" />
+  <rect x="116" y="264" width="648" height="52" fill="#fff" />
+  <g fill="#1a1a18" font-family="Arial, Helvetica, sans-serif">
+    ${certificateSvgText(128, 308, productLine, 32, 56)}
+    ${fields}
+  </g>
+</svg>`;
+}
+
+function certificateDeliveryUrl(secureUrl, format) {
+  const normalizedFormat = format === "jpg" || format === "jpeg" ? "jpg" : "webp";
+  const transformation = normalizedFormat === "jpg" ? "f_jpg,q_auto:good" : "f_webp,q_auto";
+  return secureUrl
+    .replace("/upload/", `/upload/${transformation}/`)
+    .replace(/\.svg(\?.*)?$/i, `.${normalizedFormat}$1`);
+}
+
+async function ensureCertificateImage(certificate) {
+  if (certificate.certificateImageCloudinaryUrl && certificate.certificateImagePublicId) {
+    return {
+      secureUrl: certificate.certificateImageCloudinaryUrl,
+      publicId: certificate.certificateImagePublicId
+    };
+  }
+  if (!hasCloudinaryConfig()) throw new Error("Cloudinary is required for certificate images.");
+
+  const safeId = safeCloudinaryId(certificate.certificateId);
+  const svg = await buildCertificateSvg(certificate);
+  const uploaded = await uploadToCloudinary(Buffer.from(svg), {
+    resourceType: "image",
+    publicId: `certificates/${safeId}`,
+    fileName: `${safeId}.svg`,
+    contentType: "image/svg+xml"
+  });
+  const imagePatch = {
+    certificateImageCloudinaryUrl: uploaded.secure_url,
+    certificateImagePublicId: uploaded.public_id
+  };
+  await store.update("certificates", certificate._id, imagePatch);
+  const label = await store.findOne("qr_labels", { certificateId: certificate.certificateId });
+  if (label) await store.update("qr_labels", label._id, imagePatch);
+
+  return { secureUrl: uploaded.secure_url, publicId: uploaded.public_id };
 }
 
 async function renderCertificatePdf(certificate) {
@@ -787,9 +934,9 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
       qrImagePath: qrAssets.qrImagePath,
       qrImageCloudinaryUrl: qrAssets.qrImageCloudinaryUrl,
       qrImagePublicId: qrAssets.qrImagePublicId,
-      qrDxlUrl: qrAssets.qrDxlUrl,
-      qrDxlPublicId: qrAssets.qrDxlPublicId,
-      qrDxlFormat: qrAssets.qrDxlFormat,
+      qrDxfUrl: qrAssets.qrDxfUrl,
+      qrDxfPublicId: qrAssets.qrDxfPublicId,
+      qrDxfFormat: qrAssets.qrDxfFormat,
       labelPdfPath: "",
       certificatePdfPath: "",
       status: "valid",
@@ -826,7 +973,7 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
         company: product.company || "Omsons Germany"
       },
       certificatePdfPath: "",
-      qrDxlUrl: qrAssets.qrDxlUrl,
+      qrDxfUrl: qrAssets.qrDxfUrl,
       verificationUrl: qrUrl,
       status: "valid",
       createdAt: now()
@@ -862,7 +1009,8 @@ async function cleanupLabelArtifacts(labels) {
     const tasks = labels.slice(index, index + chunkSize).flatMap((label) => {
       const labelTasks = [
         destroyCloudinaryAsset(label.qrImagePublicId, "image"),
-        destroyCloudinaryAsset(label.qrDxlPublicId, "raw")
+        destroyCloudinaryAsset(label.qrDxfPublicId || label.qrDxlPublicId, "raw"),
+        destroyCloudinaryAsset(label.certificateImagePublicId, "image")
       ];
 
       if (label.certificateId) {
@@ -952,7 +1100,9 @@ app.get("/api/certificates/search", asyncRoute(async (req, res) => {
   res.json(result.map((certificate) => ({
     ...certificate,
     _id: String(certificate._id),
-    qrLabelId: certificate.qrLabelId ? String(certificate.qrLabelId) : ""
+    qrLabelId: certificate.qrLabelId ? String(certificate.qrLabelId) : "",
+    qrDxfUrl: certificate.qrDxfUrl ||
+      `/api/certificates/${encodeURIComponent(certificate.certificateId)}/dxf`
   })));
 }));
 
@@ -1005,9 +1155,25 @@ app.get("/api/catalogue/:certificateId", asyncRoute(async (req, res) => {
       url: label?.qrUrl || "",
       image: label?.qrImagePath || "",
       imageCloudinaryUrl: label?.qrImageCloudinaryUrl || "",
-      dxlUrl: label?.qrDxlUrl || certificate.qrDxlUrl || ""
+      dxfUrl: label?.qrDxfUrl || certificate.qrDxfUrl ||
+        `/api/certificates/${encodeURIComponent(certificate.certificateId)}/dxf`
     }
   });
+}));
+
+app.get("/api/certificates/:certificateId/dxf", asyncRoute(async (req, res) => {
+  const certificate = await store.findOne("certificates", { certificateId: req.params.certificateId });
+  if (!certificate) return res.status(404).json({ error: "Certificate not found." });
+
+  const label = await store.findOne("qr_labels", { certificateId: certificate.certificateId });
+  const qrUrl = label?.qrUrl || certificate.verificationUrl ||
+    `${publicBaseUrl(req)}/coa/${encodeURIComponent(certificate.certificateId)}`;
+  const dxf = buildQrDxf({ certificateId: certificate.certificateId, qrUrl });
+  const fileName = `${safeCertificateFileName(certificate.certificateId)}.dxf`;
+
+  res.set("Content-Type", "image/vnd.dxf");
+  res.set("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.send(dxf);
 }));
 
 app.get("/api/certificates/:certificateId/pdf", asyncRoute(async (req, res) => {
@@ -1018,6 +1184,21 @@ app.get("/api/certificates/:certificateId/pdf", asyncRoute(async (req, res) => {
   const fileName = `${safeCertificateFileName(certificate.certificateId)}.pdf`;
   res.download(pdfPath, fileName);
 }));
+
+app.get("/api/certificates/:certificateId/image.:format", asyncRoute(async (req, res) => {
+  const format = req.params.format?.toLowerCase();
+  if (!["webp", "jpg", "jpeg"].includes(format)) {
+    return res.status(400).json({ error: "Use webp, jpg, or jpeg." });
+  }
+
+  const certificate = await store.findOne("certificates", { certificateId: req.params.certificateId });
+  if (!certificate) return res.status(404).json({ error: "Certificate not found." });
+
+  const image = await ensureCertificateImage(certificate);
+  res.set("Cache-Control", "public, max-age=300");
+  res.redirect(302, certificateDeliveryUrl(image.secureUrl, format));
+}));
+
 app.get("/api/certificates/:certificateId", asyncRoute(async (req, res) => {
   const certificate = await store.findOne("certificates", { certificateId: req.params.certificateId });
   if (!certificate) return res.status(404).json({ error: "Certificate not found." });
@@ -1067,6 +1248,9 @@ function startServer() {
 if (require.main === module) startServer();
 
 module.exports = app;
+module.exports.buildQrDxf = buildQrDxf;
+module.exports.buildCertificateSvg = buildCertificateSvg;
+module.exports.certificateDeliveryUrl = certificateDeliveryUrl;
 module.exports.initialiseStore = initialiseStore;
 module.exports.startServer = startServer;
 

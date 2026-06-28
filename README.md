@@ -12,7 +12,7 @@ Express app for generating Omsons QR labels and public COA verification pages.
 4. Enter the starting and ending serial numbers, then generate.
 5. Print or save the fixed label sheet. Saved batches can be reopened with **Reprint** without regenerating QR assets.
 
-Each QR opens `/coa/:certificateId`. Generation uploads the DXL asset first and the scannable PNG image second, then stores their Cloudinary URLs with the label record.
+Each QR opens `/coa/:certificateId`. The browser displays the COA as WebP by default, with JPEG and print/PDF options in the toolbar. Generation uploads the DXF asset first and the scannable PNG image second, then stores their Cloudinary URLs with the label record.
 
 ## Requirements
 
@@ -92,8 +92,9 @@ For production, pass a real `PUBLIC_BASE_URL` and `MONGODB_URI`.
 
 ## Notes
 
-- QR generation creates a `.dxl` payload first, uploads it to Cloudinary as a raw asset, then uploads the display PNG image.
-- Deleting a label also removes its PNG/DXL Cloudinary assets and removes an empty batch.
+- QR generation creates a 25 mm ASCII `.dxf` drawing first, uploads it to Cloudinary as a raw asset, then uploads the display PNG image.
+- Deleting a label also removes its PNG/DXF Cloudinary assets and removes an empty batch.
 - Generated certificate PDFs are written under `DATA_DIR/certificates` and are intentionally ignored by git.
 - The public COA route is `/coa/:certificateId`.
+- Certificate images are generated lazily from the official template and delivered through Cloudinary as WebP or JPEG.
 - The PDF template lives at `data/templates/syringe-filter-certificate.pdf`.

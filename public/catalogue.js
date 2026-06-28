@@ -96,7 +96,7 @@ function renderCatalogue(record) {
         <h2>Certificate</h2>
         <a class="secondary-link" href="${escapeHtml(record.coaUrl)}">Open COA</a>
         <a class="secondary-link" href="${escapeHtml(record.pdfUrl)}">Download PDF</a>
-        ${qr.dxlUrl ? `<a class="secondary-link" href="${escapeHtml(qr.dxlUrl)}">Open QR DXL</a>` : ""}
+        ${qr.dxfUrl ? `<a class="secondary-link" href="${escapeHtml(qr.dxfUrl)}">Open QR DXF</a>` : ""}
       </article>
     </section>
   `;

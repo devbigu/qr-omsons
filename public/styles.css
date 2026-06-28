@@ -716,6 +716,19 @@ th {
   box-shadow: 0 18px 42px rgba(31, 42, 55, 0.16);
 }
 
+.certificate-image-frame {
+  width: min(210mm, 100%);
+  margin: 0 auto;
+}
+
+.certificate-rendered-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(31, 42, 55, 0.16);
+}
+
 html::before {
   position: fixed;
   inset: 0;
@@ -870,6 +883,13 @@ html::before {
     margin: 0;
     box-shadow: none;
     page-break-after: always;
+  }
+
+  .certificate-image-frame,
+  .certificate-rendered-image {
+    width: 210mm;
+    margin: 0;
+    box-shadow: none;
   }
 }
 

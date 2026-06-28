@@ -1,7 +1,11 @@
 ﻿const certificateId = decodeURIComponent(location.pathname.split("/").pop() || "");
 const mount = document.querySelector("#certificateMount");
-const downloadPdf = document.querySelector("#downloadPdf");
-if (downloadPdf) downloadPdf.href = `/api/certificates/${encodeURIComponent(certificateId)}/pdf`;
+const encodedCertificateId = encodeURIComponent(certificateId);
+const imageWebpUrl = `/api/certificates/${encodedCertificateId}/image.webp`;
+const imageJpegUrl = `/api/certificates/${encodedCertificateId}/image.jpg`;
+document.querySelector("#openWebp").href = imageWebpUrl;
+document.querySelector("#openJpeg").href = imageJpegUrl;
+document.querySelector("#printCertificate").addEventListener("click", () => window.print());
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -52,7 +56,7 @@ function notFound() {
   `);
 }
 
-function renderCertificate(certificate) {
+function renderCertificateHtml(certificate) {
   const data = certificate.certificateData || {};
   const sterile = isSterile(data.sterilityType);
   const productStatus = sterile ? "Sterile" : "Non-Sterile";
@@ -145,6 +149,24 @@ function renderCertificate(certificate) {
       </div>
     </div>
   `);
+}
+
+function renderCertificate(certificate) {
+  mount.innerHTML = `
+    <figure class="certificate-image-frame">
+      <img
+        id="certificateImage"
+        class="certificate-rendered-image"
+        src="${imageWebpUrl}"
+        alt="Certificate of Quality ${escapeHtml(certificate.certificateId)}"
+      />
+    </figure>
+  `;
+  document.querySelector("#certificateImage").addEventListener(
+    "error",
+    () => renderCertificateHtml(certificate),
+    { once: true }
+  );
 }
 
 async function loadCertificate() {

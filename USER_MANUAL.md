@@ -46,7 +46,7 @@ Example: start serial `101` and end serial `101` generates one label.
 
 Example: start serial `101` and end serial `150` creates 50 unique labels numbered `101` through `150`.
 
-Each serial receives its own certificate ID, QR code, Cloudinary PNG image, and DXL file. A maximum of 300 labels can be generated in one batch. Do not close or refresh the page while a bulk batch is being generated.
+Each serial receives its own certificate ID, QR code, Cloudinary PNG image, and DXF file. A maximum of 300 labels can be generated in one batch. Do not close or refresh the page while a bulk batch is being generated.
 
 The software rejects duplicate serial numbers for the same product and lot.
 
@@ -92,7 +92,7 @@ Reprinting reuses the saved QR images and does not create duplicate database or 
 1. Scan the QR code with a phone camera.
 2. Open the displayed link.
 3. Confirm the product, catalogue number, lot, and serial number.
-4. Download the certificate PDF when required.
+4. The certificate displays as a WebP image; use the toolbar for JPEG or print/PDF output.
 
 The QR destination uses the public application URL configured by the administrator.
 
@@ -101,11 +101,12 @@ The QR destination uses the public application URL configured by the administrat
 1. Open **COA Records**.
 2. Search by catalogue number, lot number, serial number, or a combination.
 3. Select **Open COA** to view the certificate.
-4. Select **Open DXL** to access the stored DXL file.
+4. The certificate opens as a browser-friendly WebP image. Use **Open JPEG** for JPEG or **Print / Save PDF** to print or save it as PDF.
+5. Select **Open DXF** to access the stored DXF file.
 
 ## 10. Delete an Incorrect Label
 
-Use **Delete** only for an incorrectly generated label. Deleting removes the label and COA record, releases the serial for regeneration, and removes its PNG/DXL assets from Cloudinary.
+Use **Delete** only for an incorrectly generated label. Deleting removes the label and COA record, releases the serial for regeneration, and removes its PNG/DXF assets from Cloudinary.
 
 ## 11. Common Messages
 

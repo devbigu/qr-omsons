@@ -324,7 +324,7 @@ async function searchCertificates() {
       <td>${html(certificate.lotNumber)}</td>
       <td>${html(certificate.serialNumber)}</td>
       <td><a href="/coa/${encodeURIComponent(certificate.certificateId)}" target="_blank" rel="noopener">Open COA</a></td>
-      <td>${certificate.qrDxlUrl ? `<a href="${html(certificate.qrDxlUrl)}" target="_blank" rel="noopener">Open DXL</a>` : "-"}</td>
+      <td>${certificate.qrDxfUrl ? `<a href="${html(certificate.qrDxfUrl)}" target="_blank" rel="noopener">Open DXF</a>` : "-"}</td>
       <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
     </tr>
   `).join("") || `<tr><td colspan="7">No certificate records found.</td></tr>`;

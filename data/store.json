@@ -1,7 +1,182 @@
 {
-  "products": [],
-  "lots": [],
-  "qr_batches": [],
-  "qr_labels": [],
-  "certificates": []
+  "products": [
+    {
+      "_id": "products_AF48CZJG",
+      "productName": "Nylon Syringe Filters",
+      "productType": "Syringe filter",
+      "category": "Membrane filter",
+      "catalogueNumber": "OM553-02-02-045",
+      "company": "Omsons germany",
+      "membrane": "Nylon",
+      "poreSize": "0.45 + 0.2um",
+      "technicalDetail": "",
+      "sterilityType": "Sterile",
+      "housing": "Poly",
+      "filterDiameter": "25",
+      "burstPressure": "> 7kg/cm",
+      "holdupVolume": "< 5µl",
+      "sterilizationMethod": "Gamma",
+      "packSize": "",
+      "hsnCode": "",
+      "image": "",
+      "labelTemplate": "omsons_sample_v1",
+      "certificateTemplate": "standard_coa_v1",
+      "lotRule": {
+        "prefix": "S",
+        "suffix": "",
+        "productCode": "55",
+        "dateFormat": "DDM",
+        "monthCodes": [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E",
+          "F",
+          "G",
+          "H",
+          "I",
+          "J",
+          "K",
+          "L"
+        ],
+        "allowManualOverride": true
+      },
+      "isActive": true,
+      "createdAt": "2026-06-27T07:50:30.817Z",
+      "updatedAt": "2026-06-27T07:50:30.820Z"
+    }
+  ],
+  "lots": [
+    {
+      "_id": "lots_MA1R50MS",
+      "productId": "products_AF48CZJG",
+      "catalogueNumber": "OM553-02-02-045",
+      "lotNumber": "S5527F",
+      "manufacturingDate": "2026-06-27",
+      "expiryDate": "",
+      "monthCode": "F",
+      "yearCode": "26",
+      "productCode": "55",
+      "lotBreakdown": {
+        "lotNumber": "S5527F",
+        "prefix": "S",
+        "productCode": "55",
+        "day": "27",
+        "month": "06",
+        "year": "26",
+        "monthCode": "F",
+        "dateCode": "27F",
+        "dateFormat": "DDM",
+        "ruleText": "S + product code 55 + day 27 + month code F"
+      },
+      "createdBy": "admin",
+      "createdAt": "2026-06-27T07:50:50.658Z"
+    }
+  ],
+  "qr_batches": [
+    {
+      "_id": "qr_batches_MLPMR83K",
+      "batchId": "BATCH-1782546650670-LE38PZZA",
+      "productId": "products_AF48CZJG",
+      "lotId": "lots_MA1R50MS",
+      "catalogueNumber": "OM553-02-02-045",
+      "productName": "Nylon Syringe Filters",
+      "lotNumber": "S5527F",
+      "startSerial": 1,
+      "endSerial": 1,
+      "quantity": 1,
+      "generatedBy": "admin",
+      "createdAt": "2026-06-27T07:50:50.671Z"
+    }
+  ],
+  "qr_labels": [
+    {
+      "_id": "qr_labels_DVZDWR8I",
+      "batchId": "BATCH-1782546650670-LE38PZZA",
+      "batchRecordId": "qr_batches_MLPMR83K",
+      "productId": "products_AF48CZJG",
+      "lotId": "lots_MA1R50MS",
+      "certificateId": "CERT-OM553-S5527F-1",
+      "catalogueNumber": "OM553-02-02-045",
+      "productName": "Nylon Syringe Filters",
+      "membrane": "Nylon",
+      "poreSize": "0.45 + 0.2um",
+      "technicalDetail": "",
+      "lotNumber": "S5527F",
+      "lotBreakdown": {
+        "lotNumber": "S5527F",
+        "prefix": "S",
+        "productCode": "55",
+        "day": "27",
+        "month": "06",
+        "year": "26",
+        "monthCode": "F",
+        "dateCode": "27F",
+        "dateFormat": "DDM",
+        "ruleText": "S + product code 55 + day 27 + month code F"
+      },
+      "serialNumber": 1,
+      "qrUrl": "http://localhost:3000/coa/CERT-OM553-S5527F-1",
+      "qrImagePath": "https://res.cloudinary.com/rfpc3br5/image/upload/v1782546653/omsons-qr-labels/qr/images/CERT-OM553-S5527F-1.png",
+      "qrImageCloudinaryUrl": "https://res.cloudinary.com/rfpc3br5/image/upload/v1782546653/omsons-qr-labels/qr/images/CERT-OM553-S5527F-1.png",
+      "qrImagePublicId": "omsons-qr-labels/qr/images/CERT-OM553-S5527F-1",
+      "qrDxlUrl": "https://res.cloudinary.com/rfpc3br5/raw/upload/v1782546651/omsons-qr-labels/qr/dxl/CERT-OM553-S5527F-1.dxl",
+      "qrDxlPublicId": "omsons-qr-labels/qr/dxl/CERT-OM553-S5527F-1.dxl",
+      "qrDxlFormat": "dxl",
+      "labelPdfPath": "",
+      "certificatePdfPath": "",
+      "status": "valid",
+      "createdAt": "2026-06-27T07:50:55.415Z"
+    }
+  ],
+  "certificates": [
+    {
+      "_id": "certificates_BI02H20G",
+      "certificateId": "CERT-OM553-S5527F-1",
+      "productId": "products_AF48CZJG",
+      "lotId": "lots_MA1R50MS",
+      "qrLabelId": "qr_labels_DVZDWR8I",
+      "catalogueNumber": "OM553-02-02-045",
+      "productName": "Nylon Syringe Filters",
+      "lotNumber": "S5527F",
+      "serialNumber": 1,
+      "certificateData": {
+        "productType": "Syringe filter",
+        "category": "Membrane filter",
+        "gtap": "",
+        "membrane": "Nylon",
+        "poreSize": "0.45 + 0.2um",
+        "sterilityType": "Sterile",
+        "housing": "Poly",
+        "filterDiameter": "25",
+        "burstPressure": "> 7kg/cm",
+        "holdupVolume": "< 5µl",
+        "sterilizationMethod": "Gamma",
+        "packSize": "",
+        "hsnCode": "",
+        "manufacturingDate": "2026-06-27",
+        "expiryDate": "",
+        "lotBreakdown": {
+          "lotNumber": "S5527F",
+          "prefix": "S",
+          "productCode": "55",
+          "day": "27",
+          "month": "06",
+          "year": "26",
+          "monthCode": "F",
+          "dateCode": "27F",
+          "dateFormat": "DDM",
+          "ruleText": "S + product code 55 + day 27 + month code F"
+        },
+        "certificateTemplate": "standard_coa_v1",
+        "company": "Omsons germany"
+      },
+      "certificatePdfPath": "",
+      "qrDxlUrl": "https://res.cloudinary.com/rfpc3br5/raw/upload/v1782546651/omsons-qr-labels/qr/dxl/CERT-OM553-S5527F-1.dxl",
+      "verificationUrl": "http://localhost:3000/coa/CERT-OM553-S5527F-1",
+      "status": "valid",
+      "createdAt": "2026-06-27T07:50:55.445Z"
+    }
+  ]
 }
