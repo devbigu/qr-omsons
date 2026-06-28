@@ -131,6 +131,13 @@ label input {
   transform: rotate(-6deg);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 nav {
   display: grid;
   gap: 8px;

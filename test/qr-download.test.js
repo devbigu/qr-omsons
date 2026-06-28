@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const bcrypt = require("bcryptjs");
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omsons-qr-download-"));
 const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -15,6 +16,9 @@ process.env.DATA_DIR = dataDir;
 process.env.CLOUDINARY_CLOUD_NAME = "demo";
 process.env.CLOUDINARY_API_KEY = "test-key";
 process.env.CLOUDINARY_API_SECRET = "test-secret";
+process.env.ADMIN_USERNAME = "admin@example.com";
+process.env.ADMIN_PASSWORD_HASH = bcrypt.hashSync("test-password", 4);
+process.env.SESSION_SECRET = "qr-download-test-session-secret";
 
 fs.writeFileSync(path.join(dataDir, "store.json"), JSON.stringify({
   products: [],
@@ -72,6 +76,18 @@ fs.writeFileSync(path.join(dataDir, "store.json"), JSON.stringify({
 
 const app = require("../server");
 
+async function login(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", connection: "close" },
+    body: JSON.stringify({ username: "ADMIN@example.com", password: "test-password" })
+  });
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie);
+  return setCookie.split(";")[0];
+}
+
 function zipEntryCount(buffer) {
   const signature = Buffer.from([0x50, 0x4b, 0x01, 0x02]);
   let count = 0;
@@ -91,9 +107,14 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
   });
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const cookie = await login(baseUrl);
+  const authFetch = (url, options = {}) => fetch(url, {
+    ...options,
+    headers: { ...options.headers, cookie }
+  });
   const tempBefore = fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith("omsons-qr-zip"));
 
-  const pngResponse = await fetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/qr.png`);
+  const pngResponse = await authFetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/qr.png`);
   const png = Buffer.from(await pngResponse.arrayBuffer());
   assert.equal(pngResponse.status, 200);
   assert.match(pngResponse.headers.get("content-type"), /^image\/png/);
@@ -103,18 +124,18 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
   );
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 
-  const jpgResponse = await fetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/qr.jpg`);
+  const jpgResponse = await authFetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/qr.jpg`);
   const jpg = Buffer.from(await jpgResponse.arrayBuffer());
   assert.equal(jpgResponse.status, 200);
   assert.match(jpgResponse.headers.get("content-type"), /^image\/jpeg/);
   assert.equal(jpg[0], 0xff);
   assert.equal(jpg[1], 0xd8);
 
-  const fileJpgResponse = await fetch(`${baseUrl}/api/certificates/CERT-FILE-3/qr.jpg`);
+  const fileJpgResponse = await authFetch(`${baseUrl}/api/certificates/CERT-FILE-3/qr.jpg`);
   assert.equal(fileJpgResponse.status, 200);
   assert.match(fileJpgResponse.headers.get("content-type"), /^image\/jpeg/);
 
-  const cloudResponse = await fetch(
+  const cloudResponse = await authFetch(
     `${baseUrl}/api/certificates/CERT-CLOUD-4/qr.jpg`,
     { redirect: "manual" }
   );
@@ -128,7 +149,7 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
     "https://res.cloudinary.com/demo/image/upload/f_jpg,q_auto:good/v1/qr.jpg"
   );
 
-  const batchZipResponse = await fetch(`${baseUrl}/api/qr-labels/zip?batchId=BATCH-1`);
+  const batchZipResponse = await authFetch(`${baseUrl}/api/qr-labels/zip?batchId=BATCH-1`);
   const batchZip = Buffer.from(await batchZipResponse.arrayBuffer());
   assert.equal(batchZipResponse.status, 200);
   assert.match(batchZipResponse.headers.get("content-type"), /^application\/zip/);
@@ -140,7 +161,7 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
   assert.equal(batchZip.includes(Buffer.from("OM260-020_S5527F_1.png")), true);
   assert.equal(batchZip.includes(Buffer.from("OM260-020_S5527F_2.png")), true);
 
-  const lotZipResponse = await fetch(`${baseUrl}/api/qr-labels/zip?lotNumber=S5527F&format=jpg`);
+  const lotZipResponse = await authFetch(`${baseUrl}/api/qr-labels/zip?lotNumber=S5527F&format=jpg`);
   const lotZip = Buffer.from(await lotZipResponse.arrayBuffer());
   assert.equal(lotZipResponse.status, 200);
   assert.equal(
@@ -152,14 +173,14 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
   assert.equal(lotZip.includes(Buffer.from("OM260-020_S5527F_2.jpg")), true);
   assert.equal(lotZip.includes(Buffer.from("OM260-020_S5527F_3.jpg")), true);
 
-  const dxfResponse = await fetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/dxf`);
+  const dxfResponse = await authFetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/dxf`);
   assert.equal(dxfResponse.status, 200);
   assert.equal(
     dxfResponse.headers.get("content-disposition"),
     'attachment; filename="OM260-020_S5527F_1.dxf"'
   );
 
-  const missingFilterResponse = await fetch(`${baseUrl}/api/qr-labels/zip`);
+  const missingFilterResponse = await authFetch(`${baseUrl}/api/qr-labels/zip`);
   assert.equal(missingFilterResponse.status, 400);
 
   const tempAfter = fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith("omsons-qr-zip"));

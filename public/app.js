@@ -13,6 +13,12 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options
   });
+  if (response.status === 401) {
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+    return new Promise(() => {});
+  }
+
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
   if (!response.ok) throw new Error(data?.error || "Request failed.");
@@ -521,6 +527,18 @@ async function deleteLabel(labelId, certificateId) {
 }
 
 function bindEvents() {
+  $("#logoutButton").addEventListener("click", async () => {
+    const button = $("#logoutButton");
+    button.disabled = true;
+    try {
+      await api("/api/logout", { method: "POST", body: "{}" });
+      window.location.assign("/login");
+    } catch (error) {
+      button.disabled = false;
+      toast(error.message);
+    }
+  });
+
   $$(".nav-button").forEach((button) => button.addEventListener("click", () => {
     showScreen(button.dataset.screen);
     if (button.dataset.screen !== "certificates") clearLotViewerUrl();

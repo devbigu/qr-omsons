@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const bcrypt = require("bcryptjs");
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omsons-batch-delete-"));
 process.env.STORAGE_MODE = "json";
@@ -10,6 +11,9 @@ process.env.DATA_DIR = dataDir;
 process.env.CLOUDINARY_CLOUD_NAME = "";
 process.env.CLOUDINARY_API_KEY = "";
 process.env.CLOUDINARY_API_SECRET = "";
+process.env.ADMIN_USERNAME = "admin@example.com";
+process.env.ADMIN_PASSWORD_HASH = bcrypt.hashSync("test-password", 4);
+process.env.SESSION_SECRET = "batch-delete-test-session-secret";
 
 fs.writeFileSync(path.join(dataDir, "store.json"), JSON.stringify({
   products: [],
@@ -30,6 +34,18 @@ fs.writeFileSync(path.join(dataDir, "store.json"), JSON.stringify({
 
 const app = require("../server");
 
+async function login(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", connection: "close" },
+    body: JSON.stringify({ username: "ADMIN@example.com", password: "test-password" })
+  });
+  assert.equal(response.status, 200);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie);
+  return setCookie.split(";")[0];
+}
+
 test("deleting a batch cascades only to its labels and certificates", async (t) => {
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
@@ -40,9 +56,10 @@ test("deleting a batch cascades only to its labels and certificates", async (t) 
   });
 
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const cookie = await login(baseUrl);
   const deletedResponse = await fetch(`${baseUrl}/api/qr-batches/BATCH-1`, {
     method: "DELETE",
-    headers: { connection: "close" }
+    headers: { connection: "close", cookie }
   });
   const deleted = await deletedResponse.json();
 
@@ -51,13 +68,13 @@ test("deleting a batch cascades only to its labels and certificates", async (t) 
   assert.equal(deleted.deletedCertificates, 1);
 
   const batches = await (await fetch(`${baseUrl}/api/qr-batches`, {
-    headers: { connection: "close" }
+    headers: { connection: "close", cookie }
   })).json();
   const labels = await (await fetch(`${baseUrl}/api/qr-labels`, {
-    headers: { connection: "close" }
+    headers: { connection: "close", cookie }
   })).json();
   const certificates = await (await fetch(`${baseUrl}/api/certificates/search`, {
-    headers: { connection: "close" }
+    headers: { connection: "close", cookie }
   })).json();
 
   assert.deepEqual(batches.map((batch) => batch.batchId), ["BATCH-2"]);

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in | Omsons QR Labels</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202b;
+      --muted: #647084;
+      --brand: #0986c8;
+      --line: #d8dee8;
+      --danger: #b42318;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 18%, rgba(9, 134, 200, 0.17), transparent 28rem),
+        linear-gradient(145deg, #eef7fc, #f7f9fc 52%, #e8f3f0);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(100%, 420px);
+      padding: 36px;
+      border: 1px solid rgba(216, 222, 232, 0.9);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 24px 70px rgba(31, 42, 55, 0.14);
+    }
+
+    .brand {
+      display: inline-grid;
+      place-items: center;
+      min-width: 94px;
+      min-height: 38px;
+      border: 2px solid #42a9dc;
+      border-radius: 50%;
+      color: #087fbd;
+      background: #e9f6fc;
+      font-size: 15px;
+      font-weight: 900;
+      transform: rotate(-5deg);
+    }
+
+    h1 {
+      margin: 28px 0 8px;
+      font-size: clamp(26px, 7vw, 34px);
+      letter-spacing: -0.03em;
+    }
+
+    p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    form { display: grid; gap: 18px; }
+
+    label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    input {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #fff;
+      font: inherit;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(9, 134, 200, 0.14);
+    }
+
+    button {
+      min-height: 46px;
+      border: 0;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--brand);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:disabled { cursor: wait; opacity: 0.7; }
+
+    .error {
+      min-height: 20px;
+      margin: -4px 0 0;
+      color: var(--danger);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    @media (max-width: 480px) {
+      body { padding: 14px; }
+      main { padding: 28px 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand" aria-label="Omsons">OMSONS</div>
+    <h1>Welcome back</h1>
+    <p>Sign in to manage products, labels, lots, and certificates.</p>
+
+    <form id="loginForm">
+      <label>
+        Username
+        <input id="username" name="username" type="text" autocomplete="username" autofocus required>
+      </label>
+      <label>
+        Password
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <div class="error" id="loginError" role="alert" aria-live="polite"></div>
+      <button id="submitButton" type="submit">Sign in</button>
+    </form>
+  </main>
+
+  <script>
+    const form = document.querySelector("#loginForm");
+    const error = document.querySelector("#loginError");
+    const button = document.querySelector("#submitButton");
+
+    function safeNextPath(value) {
+      return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      button.disabled = true;
+      button.textContent = "Signing in…";
+
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: document.querySelector("#username").value,
+            password: document.querySelector("#password").value
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Invalid credentials");
+
+        const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+        window.location.assign(next);
+      } catch (loginError) {
+        error.textContent = loginError.message || "Invalid credentials";
+        button.disabled = false;
+        button.textContent = "Sign in";
+      }
+    });
+  </script>
+</body>
+</html>

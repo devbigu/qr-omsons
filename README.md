@@ -25,6 +25,26 @@ Each QR opens its WebP certificate image directly, without a format chooser or p
 - `GET /api/qr-labels/zip?lotNumber=...` streams labels across every batch in the lot.
 - Opening `/?id=qr-<lotNumber>` loads the lot-wise COA Records view directly.
 
+## Shared Login
+
+The admin UI, static admin assets, downloads, lot viewer, and all management APIs require the shared administrator login. QR scans remain public and open the WebP certificate directly.
+
+Before starting the app, set:
+
+- `ADMIN_USERNAME` (matching is case-insensitive)
+- `ADMIN_PASSWORD_HASH` (bcrypt only; never store the plaintext password)
+- `SESSION_SECRET` (a long random value)
+- `SESSION_TTL_DAYS=7` (optional; defaults to 7)
+
+Generate the password hash and session secret locally:
+
+```sh
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" "replace-with-password"
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+MongoDB deployments store sessions in the `sessions` collection so logins survive restarts. JSON/local mode uses the in-memory session store and is intended for one development process.
+
 ## Requirements
 
 - Node.js 18 or newer
@@ -59,6 +79,10 @@ Set these variables on your host:
 - `PYTHON=python3`, or the platform's Python path
 - `CERTIFICATE_TEMPLATE_FILE`, optional override for the source certificate template PDF
 - `TRUST_PROXY=true` when running behind a managed HTTPS proxy
+- `ADMIN_USERNAME`, the shared case-insensitive login name
+- `ADMIN_PASSWORD_HASH`, a bcrypt password hash
+- `SESSION_SECRET`, required in production
+- `SESSION_TTL_DAYS=7`, optional session lifetime
 - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` to upload generated QR assets
 - `CLOUDINARY_FOLDER=omsons-qr-labels`, optional Cloudinary folder for uploaded QR files
 
@@ -84,8 +108,9 @@ crashing and restarting the entire service.
 ## Vercel Deploy
 
 `server.js` exports Express for Vercel while still starting a normal port listener on
-Node hosts. Vercel serves files from `public/` through its CDN. Configure the same
-environment variables in the Vercel project and deploy from the repository root.
+Node hosts. The catch-all route in `vercel.json` sends static admin assets through
+Express so the login middleware cannot be bypassed. Configure the same environment
+variables in the Vercel project and deploy from the repository root.
 
 ## Docker Deploy
 
@@ -96,6 +121,9 @@ docker build -t omsons-qr-labels .
 docker run -p 3000:3000 \
   -e PUBLIC_BASE_URL=http://localhost:3000 \
   -e MONGODB_URI= \
+  -e ADMIN_USERNAME=admin@example.com \
+  -e ADMIN_PASSWORD_HASH='<bcrypt-hash>' \
+  -e SESSION_SECRET='<long-random-secret>' \
   omsons-qr-labels
 ```
 
@@ -110,4 +138,5 @@ For production, pass a real `PUBLIC_BASE_URL` and `MONGODB_URI`.
 - Certificate images are generated lazily from the official template and delivered through Cloudinary as WebP or JPEG.
 - The PDF template lives at `data/templates/syringe-filter-certificate.pdf`.
 - ZIP archives are streamed with Archiver and do not create temporary files.
-- **Security:** there is no authentication. Anyone with a shareable `?id=qr-<lotNumber>` URL can view and download that lot's labels.
+- The admin UI and lot URLs require the shared login. Public QR scans expose only the certificate-image route.
+- Login rate limiting is not implemented yet; add it before exposing the login endpoint to sustained hostile traffic.

@@ -26,17 +26,19 @@ Each generated label has:
 - `qrcode` for QR generation
 - `sharp` for PNG-to-JPG conversion
 - `archiver` for streaming ZIP output
+- `express-session`, `bcryptjs`, and `connect-mongo` for the shared login gate
 - Python 3 and PyMuPDF for certificate PDF rendering
 - Node's built-in test runner
 
-There is no frontend framework, bundler, TypeScript, ORM, authentication, or authorization layer.
+There is no frontend framework, bundler, TypeScript, or ORM. Authentication is one shared administrator identity rather than per-user accounts or roles.
 
 ## Repository Map
 
 | Path | Purpose |
 | --- | --- |
 | `server.js` | Express server, storage adapters, QR/DXF/image/PDF logic, API routes |
-| `public/index.html` | Admin UI markup |
+| `public/index.html` | Protected admin UI markup |
+| `public/login.html` | Self-contained public sign-in page |
 | `public/app.js` | Admin state, rendering, downloads, lot viewer, history handling |
 | `public/styles.css` | Admin, labels, menus, certificate, and print styling |
 | `data/store.json` | Local JSON database |
@@ -55,10 +57,11 @@ The JSON and MongoDB adapters expose the same collections:
 - `qr_batches`: contiguous serial ranges, capped at 300 labels
 - `qr_labels`: one physical label and its QR/DXF asset references
 - `certificates`: immutable-ish certificate snapshot for a label
+- `sessions`: login sessions managed by `connect-mongo` when MongoDB is configured; this is not part of the business-data adapter
 
 MongoDB creates unique indexes for product catalogue numbers and for the label tuple `catalogueNumber + lotNumber + serialNumber`.
 
-No schema changes are required for QR menus, ZIP exports, or the lot viewer.
+No business-schema changes are required for QR menus, ZIP exports, the lot viewer, or authentication.
 
 ## Identifiers
 
@@ -75,6 +78,27 @@ Default lot rule:
 ```
 
 Example: prefix `S`, product code `55`, day `27`, June `F` -> `S5527F`.
+
+## Authentication and Route Access
+
+The app uses one shared administrator username and bcrypt password hash. Successful login regenerates the session ID, sets `session.authenticated = true`, and issues an HttpOnly, SameSite=Lax cookie. Production cookies are Secure. The default lifetime is seven days and is configurable with `SESSION_TTL_DAYS`.
+
+MongoDB mode stores sessions in the `sessions` collection through `connect-mongo`, so authenticated sessions survive app restarts. JSON/local mode uses Express MemoryStore and loses sessions when the process restarts.
+
+Public routes:
+
+- `GET /login`
+- `POST /api/login`
+- `GET /api/auth/status`
+- `GET /api/health`
+- `GET /api/certificates/:certificateId/image.webp`
+- `GET /api/certificates/:certificateId/image.jpg`
+- `GET /coa/:certificateId`
+- `GET /catalogue/:certificateId`
+
+All other routes are protected, including the admin shell, its JavaScript/CSS, management APIs, PNG/JPG/DXF downloads, ZIP downloads, and `/?id=qr-<lotNumber>` lot views. Unauthenticated API requests receive `401 {"error":"Not authenticated"}`. Other requests redirect to `/login?next=...`; only same-origin relative return paths are accepted.
+
+The browser API helper redirects any later 401 to login while preserving the current deep link. Logout destroys the server session and clears the cookie.
 
 ## Generation Flow
 
@@ -198,7 +222,11 @@ Download and ZIP routes create no persistent assets, so deletion cleanup is unch
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET | `/api/health` | Storage/Cloudinary health |
+| GET | `/login` | Public sign-in page |
+| POST | `/api/login` | Validate shared credentials and create session |
+| POST | `/api/logout` | Destroy authenticated session |
+| GET | `/api/auth/status` | Public boolean session status |
+| GET | `/api/health` | Public storage/Cloudinary health |
 | GET | `/api/dashboard` | Counts and recent labels |
 | CRUD | `/api/products...` | Product master |
 | GET/POST | `/api/lots...` | Lots and suggestions |
@@ -212,16 +240,17 @@ Download and ZIP routes create no persistent assets, so deletion cleanup is unch
 | GET | `/api/certificates/:id/qr.png` | QR PNG |
 | GET | `/api/certificates/:id/qr.jpg` | QR JPG |
 | GET | `/api/certificates/:id/dxf` | QR DXF |
-| GET | `/api/certificates/:id/image.webp` | WebP certificate |
-| GET | `/api/certificates/:id/image.jpg` | JPEG certificate |
+| GET | `/api/certificates/:id/image.webp` | Public WebP certificate |
+| GET | `/api/certificates/:id/image.jpg` | Public JPEG certificate |
 | GET | `/api/certificates/:id/pdf` | Certificate PDF |
-| GET | `/coa/:id` | Legacy redirect to WebP |
+| GET | `/coa/:id` | Public legacy redirect to WebP |
+| GET | `/catalogue/:id` | Public compatibility redirect to `/coa` |
 
 ## Storage
 
 JSON mode is selected with `STORAGE_MODE=json` or when `MONGODB_URI` is absent. It rewrites the complete `DATA_DIR/store.json` file and is not safe for concurrent multi-instance production.
 
-MongoDB is selected when `MONGODB_URI` is present. It is the recommended production store.
+MongoDB is selected when `MONGODB_URI` is present. It is the recommended production store. The same URI is used by `connect-mongo` for persistent login sessions.
 
 ## Environment
 
@@ -230,6 +259,10 @@ Important variables:
 - `PORT`
 - `PUBLIC_BASE_URL`
 - `TRUST_PROXY`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD_HASH` (bcrypt; plaintext is never configured)
+- `SESSION_SECRET` (required in production)
+- `SESSION_TTL_DAYS` (default 7)
 - `STORAGE_MODE`
 - `DATA_DIR`
 - `MONGODB_URI`, `MONGODB_DB`
@@ -263,9 +296,11 @@ npm start
 - ZIP exports only read existing assets and leave no temp files.
 - Legacy `/coa` and legacy DXL public IDs remain compatible for old records.
 
-## Security Warning
+## Security Model
 
-The application has no authentication. The admin UI, search routes, download routes, and shareable lot URLs are public when the deployment is public. Anyone with `/?id=qr-<lotNumber>` can view and download every label in that lot. This is existing architecture, not solved by the QR download feature, and must be considered before sharing URLs externally.
+The shared login protects the admin UI, static admin assets, management/search APIs, all QR asset downloads, ZIP exports, and lot-view URLs. Public access is deliberately limited to login/health/status endpoints and direct WebP/JPEG certificate delivery used by QR scanning.
+
+This is a single shared credential, not per-operator identity. There is no login rate limiting, role-based authorization, audit identity, or password-reset flow. Rate limiting is the highest-priority follow-up before the login endpoint is exposed to sustained hostile traffic.
 
 ## Known Limitations
 
@@ -274,6 +309,6 @@ The application has no authentication. The admin UI, search routes, download rou
 - WebP certificate delivery requires Cloudinary.
 - List/search endpoints are not paginated.
 - Fixed template coordinates must be recalibrated when certificate assets change.
-- No auth, CSRF protection, rate limiting, audit identity, or background queue.
+- No login rate limiting, per-user roles, audit identity, password-reset flow, or background queue.
 - Old `coa.html/coa.js` and catalogue files remain but public routes now use direct WebP.
 - Legacy records may retain `qrDxl*` fields; current generation and downloads use `qrDxf*`.

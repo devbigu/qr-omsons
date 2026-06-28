@@ -1,12 +1,14 @@
 # Omsons QR Label Generator - User Manual
 
-## 1. Open the Software
+## 1. Open the Software and Sign In
 
 Open the application URL provided by your administrator. For local use:
 
 `http://localhost:3000`
 
-The left menu contains Dashboard, Products, Generate Labels, Label Preview, and COA Records.
+Enter the shared username and password, then select **Sign in**. If you opened a saved lot link, the software returns to that lot automatically after login.
+
+The left menu contains Dashboard, Products, Generate Labels, Label Preview, and COA Records. Select **Logout** in the top-right corner when you finish. Scanning a product QR code does not require this administrator login; it opens the WebP certificate directly.
 
 ## 2. Add a Product
 
@@ -106,7 +108,7 @@ The QR destination uses the public application URL configured by the administrat
 6. Use **Download All (.zip)** to download the complete lot.
 7. Copy the resulting `?id=qr-<lotNumber>` URL when the lot view needs to be shared.
 
-> **Access warning:** the application currently has no authentication. Anyone with a shared lot URL can view and download that lot's labels.
+> **Access note:** lot-view links require the shared administrator login. After login, the software returns to the requested lot. Product QR scans remain public and open only the matching certificate image.
 
 ## 10. Delete an Incorrect Label
 
@@ -119,6 +121,7 @@ Use **Delete** only for an incorrectly generated label. Deleting removes the lab
 - **End serial must be equal to or greater than start serial:** Correct the serial range.
 - **Generate up to 300 labels per batch:** Divide the work into smaller batches.
 - **Cloudinary is partially configured:** Ask the administrator to check all Cloudinary environment variables.
+- **Not authenticated:** Sign in again. Your session may have expired or the server may have restarted in local JSON mode.
 
 ## 12. Bulk Generation Checklist
 

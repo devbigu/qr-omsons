@@ -5,5 +5,8 @@
       "maxDuration": 60,
       "includeFiles": "{data/templates/**,scripts/**}"
     }
-  }
+  },
+  "routes": [
+    { "src": "/(.*)", "dest": "/server.js" }
+  ]
 }

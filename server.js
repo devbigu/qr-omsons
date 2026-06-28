@@ -1,5 +1,8 @@
 const archiver = require("archiver");
+const bcrypt = require("bcryptjs");
+const MongoSessionStore = require("connect-mongo");
 const express = require("express");
+const session = require("express-session");
 const QRCode = require("qrcode");
 const sharp = require("sharp");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -60,12 +63,133 @@ const cloudinary = {
   apiSecret: process.env.CLOUDINARY_API_SECRET || "",
   folder: process.env.CLOUDINARY_FOLDER || "omsons-qr-labels"
 };
+const isProduction = process.env.NODE_ENV === "production";
+const configuredSessionTtlDays = Number(process.env.SESSION_TTL_DAYS || 7);
+const sessionTtlDays = Number.isFinite(configuredSessionTtlDays) && configuredSessionTtlDays > 0
+  ? configuredSessionTtlDays
+  : 7;
+const sessionTtlMs = sessionTtlDays * 24 * 60 * 60 * 1000;
+const sessionCookieName = "omsons.sid";
+const configuredSessionSecret = process.env.SESSION_SECRET || "";
+const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
+const adminPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || "");
+
+if (isProduction && (!configuredSessionSecret || !adminUsername || !adminPasswordHash)) {
+  throw new Error("ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and SESSION_SECRET are required in production.");
+}
+
+const sessionStore = process.env.MONGODB_URI && process.env.STORAGE_MODE !== "json"
+  ? MongoSessionStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      dbName: process.env.MONGODB_DB || "omsons_qr",
+      collectionName: "sessions",
+      ttl: Math.ceil(sessionTtlMs / 1000)
+    })
+  : undefined;
 
 app.disable("x-powered-by");
 if (envFlag("TRUST_PROXY", process.env.NODE_ENV === "production")) {
   app.set("trust proxy", 1);
 }
 app.use(express.json({ limit: "4mb" }));
+app.use(session({
+  name: sessionCookieName,
+  secret: configuredSessionSecret || "local-development-only-change-me",
+  store: sessionStore,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    maxAge: sessionTtlMs
+  }
+}));
+
+function safeNextPath(value) {
+  const candidate = String(value || "");
+  return candidate.startsWith("/") && !candidate.startsWith("//") ? candidate : "/";
+}
+
+function isPublicRequest(req) {
+  if (req.method === "GET" && ["/login", "/api/health", "/api/auth/status"].includes(req.path)) {
+    return true;
+  }
+  if (req.method === "POST" && req.path === "/api/login") return true;
+  if (
+    req.method === "GET"
+    && /^\/api\/certificates\/[^/]+\/image\.(webp|jpe?g)$/i.test(req.path)
+  ) {
+    return true;
+  }
+  return req.method === "GET" && /^\/(coa|catalogue)\/[^/]+$/i.test(req.path);
+}
+
+function requireAuth(req, res, next) {
+  if (isPublicRequest(req) || req.session?.authenticated === true) return next();
+  if (req.path.startsWith("/api/")) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const nextPath = safeNextPath(req.originalUrl);
+  return res.redirect(302, `/login?next=${encodeURIComponent(nextPath)}`);
+}
+
+app.get("/login", (req, res) => {
+  if (req.session?.authenticated === true) {
+    return res.redirect(302, safeNextPath(req.query.next));
+  }
+  return res.sendFile(path.join(__dirname, "public", "login.html"));
+});
+
+app.post("/api/login", asyncRoute(async (req, res) => {
+  const username = String(req.body?.username || "").trim();
+  const password = String(req.body?.password || "");
+  const usernameMatches = Boolean(adminUsername)
+    && username.toLocaleLowerCase() === adminUsername.toLocaleLowerCase();
+  let passwordMatches = false;
+
+  if (adminPasswordHash) {
+    try {
+      passwordMatches = await bcrypt.compare(password, adminPasswordHash);
+    } catch {
+      passwordMatches = false;
+    }
+  }
+
+  if (!usernameMatches || !passwordMatches) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  await new Promise((resolve, reject) => {
+    req.session.regenerate((error) => (error ? reject(error) : resolve()));
+  });
+  req.session.authenticated = true;
+  await new Promise((resolve, reject) => {
+    req.session.save((error) => (error ? reject(error) : resolve()));
+  });
+  return res.json({ ok: true });
+}));
+
+app.get("/api/auth/status", (req, res) => {
+  res.json({ authenticated: req.session?.authenticated === true });
+});
+
+app.use(requireAuth);
+
+app.post("/api/logout", (req, res, next) => {
+  req.session.destroy((error) => {
+    if (error) return next(error);
+    res.clearCookie(sessionCookieName, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProduction,
+      path: "/"
+    });
+    return res.json({ ok: true });
+  });
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 const now = () => new Date().toISOString();
