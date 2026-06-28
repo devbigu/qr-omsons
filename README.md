@@ -4,6 +4,8 @@ Operator instructions, including bulk generation and reprinting: [USER_MANUAL.md
 
 Express app for generating Omsons QR labels and public COA verification pages.
 
+See [APP_CONTEXT.md](APP_CONTEXT.md) for the complete architecture, data model, API, workflows, deployment notes, and known limitations.
+
 ## Operator Workflow
 
 1. Save the product once in **Product Master**, including its catalogue number, membrane, pore size, and lot product code.
@@ -12,7 +14,7 @@ Express app for generating Omsons QR labels and public COA verification pages.
 4. Enter the starting and ending serial numbers, then generate.
 5. Print or save the fixed label sheet. Saved batches can be reopened with **Reprint** without regenerating QR assets.
 
-Each QR opens `/coa/:certificateId`. The browser displays the COA as WebP by default, with JPEG and print/PDF options in the toolbar. Generation uploads the DXF asset first and the scannable PNG image second, then stores their Cloudinary URLs with the label record.
+Each QR opens its WebP certificate image directly, without a format chooser or print prompt. Generation uploads the DXF asset first and the scannable PNG image second, then stores their Cloudinary URLs with the label record.
 
 ## Requirements
 
@@ -95,6 +97,6 @@ For production, pass a real `PUBLIC_BASE_URL` and `MONGODB_URI`.
 - QR generation creates a 25 mm ASCII `.dxf` drawing first, uploads it to Cloudinary as a raw asset, then uploads the display PNG image.
 - Deleting a label also removes its PNG/DXF Cloudinary assets and removes an empty batch.
 - Generated certificate PDFs are written under `DATA_DIR/certificates` and are intentionally ignored by git.
-- The public COA route is `/coa/:certificateId`.
+- The public COA route `/coa/:certificateId` redirects directly to the WebP certificate image for compatibility with existing labels.
 - Certificate images are generated lazily from the official template and delivered through Cloudinary as WebP or JPEG.
 - The PDF template lives at `data/templates/syringe-filter-certificate.pdf`.

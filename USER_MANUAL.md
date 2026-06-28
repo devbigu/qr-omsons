@@ -91,8 +91,7 @@ Reprinting reuses the saved QR images and does not create duplicate database or 
 
 1. Scan the QR code with a phone camera.
 2. Open the displayed link.
-3. Confirm the product, catalogue number, lot, and serial number.
-4. The certificate displays as a WebP image; use the toolbar for JPEG or print/PDF output.
+3. The WebP certificate image opens directly, without asking for a format or showing a print prompt.
 
 The QR destination uses the public application URL configured by the administrator.
 
@@ -101,7 +100,7 @@ The QR destination uses the public application URL configured by the administrat
 1. Open **COA Records**.
 2. Search by catalogue number, lot number, serial number, or a combination.
 3. Select **Open COA** to view the certificate.
-4. The certificate opens as a browser-friendly WebP image. Use **Open JPEG** for JPEG or **Print / Save PDF** to print or save it as PDF.
+4. The certificate opens directly as a browser-friendly WebP image.
 5. Select **Open DXF** to access the stored DXF file.
 
 ## 10. Delete an Incorrect Label

@@ -914,7 +914,7 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
   const labels = [];
   for (const serialNumber of serials) {
     const certificateId = buildCertificateId(product.catalogueNumber, lotNumber, serialNumber);
-    const qrUrl = `${publicBaseUrl(req)}/coa/${encodeURIComponent(certificateId)}`;
+    const qrUrl = `${publicBaseUrl(req)}/api/certificates/${encodeURIComponent(certificateId)}/image.webp`;
     const qrAssets = await createQrAssets(qrUrl, certificateId);
     const label = await store.insert("qr_labels", {
       batchId: batch.batchId,
@@ -1121,8 +1121,8 @@ app.get("/api/catalogue/:certificateId", asyncRoute(async (req, res) => {
     lotNumber: certificate.lotNumber,
     serialNumber: certificate.serialNumber,
     status: certificate.status,
-    catalogueUrl: `${publicBaseUrl(req)}/coa/${encodeURIComponent(certificate.certificateId)}`,
-    coaUrl: `${publicBaseUrl(req)}/coa/${encodeURIComponent(certificate.certificateId)}`,
+    catalogueUrl: `${publicBaseUrl(req)}/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp`,
+    coaUrl: `${publicBaseUrl(req)}/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp`,
     pdfUrl: `${publicBaseUrl(req)}/api/certificates/${encodeURIComponent(certificate.certificateId)}/pdf`,
     product: {
       productName: product?.productName || certificate.productName || "",
@@ -1210,7 +1210,7 @@ app.get("/catalogue/:certificateId", (req, res) => {
 });
 
 app.get("/coa/:certificateId", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "coa.html"));
+  res.redirect(302, `/api/certificates/${encodeURIComponent(req.params.certificateId)}/image.webp`);
 });
 
 app.use((err, req, res, next) => {

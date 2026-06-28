@@ -42,3 +42,18 @@ test("Cloudinary delivery URLs select WebP and JPEG output", () => {
     "https://res.cloudinary.com/demo/image/upload/f_jpg,q_auto:good/v1/folder/certificate.jpg"
   );
 });
+
+test("legacy COA links redirect directly to the WebP certificate", async (t) => {
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const response = await fetch(
+    `http://127.0.0.1:${server.address().port}/coa/CERT-TEST-1`,
+    { redirect: "manual" }
+  );
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/api/certificates/CERT-TEST-1/image.webp");
+});

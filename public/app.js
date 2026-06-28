@@ -323,7 +323,7 @@ async function searchCertificates() {
       <td>${html(certificate.productName)}</td>
       <td>${html(certificate.lotNumber)}</td>
       <td>${html(certificate.serialNumber)}</td>
-      <td><a href="/coa/${encodeURIComponent(certificate.certificateId)}" target="_blank" rel="noopener">Open COA</a></td>
+      <td><a href="/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp" target="_blank" rel="noopener">Open COA</a></td>
       <td>${certificate.qrDxfUrl ? `<a href="${html(certificate.qrDxfUrl)}" target="_blank" rel="noopener">Open DXF</a>` : "-"}</td>
       <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
     </tr>
