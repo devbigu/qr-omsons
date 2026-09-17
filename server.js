@@ -245,7 +245,8 @@ function suggestLot(product, manufacturingDate, lots = []) {
   const poreCode = poreLotCode(product.poreSize);
   if (membraneCode && poreCode) {
     const yearCode = year.slice(-1);
-    const base = `${membraneCode}${poreCode}${yearCode}`;
+    const sterilityCode = /^sterile$/i.test(String(product.sterilityType || "").trim()) ? "S" : "N";
+    const base = `${membraneCode}${poreCode}${yearCode}${sterilityCode}`;
     const matching = lots.filter((lot) => new RegExp(`^${base}\\d{2,}$`).test(String(lot.lotNumber || "")));
     const sameDay = manufacturingDate && matching.find((lot) =>
       lot.catalogueNumber === product.catalogueNumber && lot.manufacturingDate === manufacturingDate);
@@ -257,12 +258,13 @@ function suggestLot(product, manufacturingDate, lots = []) {
       prefix: membraneCode,
       poreCode,
       yearCode,
+      sterilityCode,
       day,
       month,
       year,
       monthCode,
       serial,
-      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + serial ${serial}`
+      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + ${sterilityCode === "S" ? "sterile" : "non-sterile"} ${sterilityCode} + serial ${serial}`
     };
   }
   const productCode = String(rule.productCode || "55").trim();
