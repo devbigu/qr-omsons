@@ -263,7 +263,7 @@ function setSelect(id, value) {
   const el = $(id);
   el.value = value || "";
   // legacy records may hold values outside the option list; keep them selectable
-  if (value && el.value !== value) el.add(new Option(value, value, false, true));
+  if (value && el.value !== value) el.add(new Option(value, value, false, true), el.querySelector('option[value="__custom"]'));
 }
 
 function fillProductForm(product) {
@@ -287,39 +287,14 @@ function fillProductForm(product) {
   $("#labelTemplate").value = product.labelTemplate || "omsons_sample_v1";
   $("#certificateTemplate").value = product.certificateTemplate || "standard_coa_v1";
   state.editingLotRule = product.lotRule;
-  updateLotBuilder().catch(() => {});
   $("#isActive").checked = product.isActive !== false;
-}
-
-function renderProducts() {
-  const query = $("#productSearch").value.trim().toUpperCase();
-  const list = $("#productList");
-  const products = state.products.filter((product) =>
-    [product.catalogueNumber, product.productName, product.membrane, product.poreSize, product.company].join(" ").toUpperCase().includes(query));
-  list.replaceChildren();
-  if (!products.length) {
-    list.innerHTML = `<div class="empty-state">${state.products.length ? "No matching products." : "No products yet."}</div>`;
-    return;
-  }
-  products.forEach((product) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "list-item";
-    item.innerHTML = `<strong>${html(product.catalogueNumber)}</strong><span>${html(product.productName)} - ${html(product.membrane)} - ${html(product.poreSize)}</span>`;
-    item.addEventListener("click", async () => {
-      fillProductForm(product);
-      $("#genCatalogue").value = product.catalogueNumber;
-      renderProductSummary(product);
-      await refreshLotNumber().catch((error) => toast(error.message));
-      previewFromForm();
-    });
-    list.append(item);
-  });
+  refreshProductPreview();
 }
 
 async function loadProducts(preferredCatalogue = "") {
   state.products = await api("/api/products");
-  renderProducts();
+  $("#productCatalogueList").replaceChildren(...state.products.map((product) =>
+    new Option(`${product.productName} - ${product.membrane} - ${product.poreSize}`, product.catalogueNumber)));
 
   const select = $("#genCatalogue");
   const previousValue = preferredCatalogue || select.value;
@@ -390,6 +365,57 @@ async function updateLotBuilder() {
     part(lot.sterilityCode, "sterility"),
     part(lot.serial, "serial")
   ].join(" + ")}<br>Lot number: <strong>${html(lot.lotNumber || "select membrane and pore size")}</strong>`;
+  return lot;
+}
+
+let productPreviewTimer;
+function refreshProductPreview() {
+  clearTimeout(productPreviewTimer);
+  productPreviewTimer = setTimeout(async () => {
+    try {
+      const lot = await updateLotBuilder();
+      const { lotRule, isActive, ...fields } = productPayload();
+      const params = new URLSearchParams({ ...fields, lotNumber: lot.lotNumber || "" });
+      $("#certificatePreview").src = `/api/certificate-preview.svg?${params}`;
+    } catch (error) {
+      toast(error.message);
+    }
+  }, 250);
+}
+
+const customOptionFields = ["productName", "membrane", "poreSize", "filterDiameter", "holdupVolume", "sterilizationMethod"];
+
+function addCustomOption(field, value) {
+  const select = $(`#${field}`);
+  if ([...select.options].some((option) => option.value === value)) return;
+  select.add(new Option(value, value), select.querySelector('option[value="__custom"]'));
+}
+
+async function setupCustomOptions() {
+  customOptionFields.forEach((field) => {
+    const select = $(`#${field}`);
+    select.add(new Option("+ Add custom…", "__custom"));
+    select.dataset.previous = select.value;
+    select.addEventListener("change", () => {
+      if (select.value !== "__custom") {
+        select.dataset.previous = select.value;
+        return;
+      }
+      const label = select.closest("label")?.firstChild?.textContent?.trim() || "option";
+      const value = window.prompt(`New ${label}:`)?.trim();
+      if (!value) {
+        select.value = select.dataset.previous || "";
+        return;
+      }
+      addCustomOption(field, value);
+      select.value = value;
+      select.dataset.previous = value;
+      api("/api/custom-options", { method: "POST", body: JSON.stringify({ field, value }) })
+        .catch((error) => toast(error.message));
+    });
+  });
+  const saved = await api("/api/custom-options");
+  saved.forEach(({ field, value }) => customOptionFields.includes(field) && addCustomOption(field, value));
 }
 
 async function refreshLotNumber(updateSerial = true) {
@@ -576,11 +602,25 @@ function bindEvents() {
     showScreen(button.dataset.screen);
     if (button.dataset.screen !== "certificates") clearLotViewerUrl();
   }));
-  $("#productSearch").addEventListener("input", renderProducts);
   $("#productForm").addEventListener("submit", saveProduct);
-  ["#membrane", "#poreSize", "#sterilityType"].forEach((id) =>
-    $(id).addEventListener("change", () => updateLotBuilder().catch((error) => toast(error.message))));
-  updateLotBuilder().catch(() => {});
+  $("#productSearch").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+  $("#productSearch").addEventListener("input", async () => {
+    const query = $("#productSearch").value.trim().toUpperCase();
+    const product = state.products.find((item) => item.catalogueNumber === query);
+    if (!product) return;
+    fillProductForm(product);
+    $("#genCatalogue").value = product.catalogueNumber;
+    renderProductSummary(product);
+    await refreshLotNumber().catch((error) => toast(error.message));
+    previewFromForm();
+  });
+  $("#productForm").addEventListener("input", refreshProductPreview);
+  $("#productForm").addEventListener("change", refreshProductPreview);
+  $("#certificatePreview").addEventListener("error", () =>
+    toast("Certificate preview failed to load. Restart the server and refresh the page."));
+  refreshProductPreview();
   $("#manufacturingDate").addEventListener("change", () => refreshLotNumber().catch((error) => toast(error.message)));
   $("#genCatalogue").addEventListener("change", () => lookupProduct().catch((error) => toast(error.message)));
   $("#startSerial").addEventListener("input", () => {
@@ -664,6 +704,7 @@ async function boot() {
   bindEvents();
   const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   $("#manufacturingDate").value = localToday;
+  await setupCustomOptions().catch((error) => toast(error.message));
   await loadProducts();
   await loadDashboard();
   await refreshLotNumber().catch(() => {});

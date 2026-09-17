@@ -594,16 +594,16 @@ class JsonStore {
   }
 
   async list(collection, predicate = {}) {
-    return this.data[collection].filter(this.matches(predicate));
+    return (this.data[collection] || []).filter(this.matches(predicate));
   }
 
   async findOne(collection, predicate) {
-    return this.data[collection].find(this.matches(predicate)) || null;
+    return (this.data[collection] || []).find(this.matches(predicate)) || null;
   }
 
   async insert(collection, doc) {
     const saved = { _id: `${collection}_${slug()}`, ...doc };
-    this.data[collection].push(saved);
+    (this.data[collection] ||= []).push(saved);
     await this.save();
     return saved;
   }
@@ -1137,6 +1137,23 @@ app.get("/api/lots/preview", asyncRoute(async (req, res) => {
   });
 }));
 
+const customOptionFields = ["productName", "membrane", "poreSize", "filterDiameter", "holdupVolume", "sterilizationMethod"];
+
+app.get("/api/custom-options", asyncRoute(async (req, res) => {
+  const options = await store.list("custom_options");
+  res.json(options.map(({ field, value }) => ({ field, value })));
+}));
+
+app.post("/api/custom-options", asyncRoute(async (req, res) => {
+  const field = String(req.body.field || "");
+  const value = String(req.body.value || "").trim();
+  if (!customOptionFields.includes(field)) return res.status(400).json({ error: "This dropdown does not accept custom options." });
+  if (!value || value.length > 80) return res.status(400).json({ error: "Option must be 1-80 characters." });
+  const existing = await store.findOne("custom_options", { field, value });
+  if (!existing) await store.insert("custom_options", { field, value, createdAt: now() });
+  res.status(existing ? 200 : 201).json({ field, value });
+}));
+
 app.get("/api/lots/:id", asyncRoute(async (req, res) => {
   const lot = await store.findOne("lots", { _id: req.params.id });
   if (!lot) return res.status(404).json({ error: "Lot not found." });
@@ -1595,6 +1612,30 @@ app.get("/api/certificates/:certificateId/image.:format", asyncRoute(async (req,
   const image = await ensureCertificateImage(certificate);
   res.set("Cache-Control", "public, max-age=300");
   res.redirect(302, certificateDeliveryUrl(image.secureUrl, format));
+}));
+
+app.get("/api/certificate-preview.svg", asyncRoute(async (req, res) => {
+  const q = (name) => String(req.query[name] || "");
+  const svg = await buildCertificateSvg({
+    productName: q("productName"),
+    catalogueNumber: normaliseCatalogue(q("catalogueNumber")),
+    lotNumber: q("lotNumber"),
+    certificateData: {
+      company: q("company"),
+      membrane: q("membrane"),
+      poreSize: q("poreSize"),
+      housing: q("housing"),
+      filterDiameter: q("filterDiameter"),
+      burstPressure: q("burstPressure"),
+      holdupVolume: q("holdupVolume"),
+      sterilityType: q("sterilityType"),
+      sterilizationMethod: q("sterilizationMethod"),
+      expiryDate: q("expiryDate")
+    }
+  });
+  res.set("Content-Type", "image/svg+xml");
+  res.set("Cache-Control", "private, max-age=60");
+  res.send(svg);
 }));
 
 app.get("/api/certificates/:certificateId", asyncRoute(async (req, res) => {

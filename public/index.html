@@ -84,6 +84,8 @@
           <form class="panel form-grid" id="productForm">
             <div class="panel-head">
               <h2>Product Master</h2>
+              <input class="search-box product-search" id="productSearch" list="productCatalogueList" placeholder="Catalogue no." autocomplete="off" aria-label="Open product by catalogue number">
+              <datalist id="productCatalogueList"></datalist>
               <button type="submit">Save Product</button>
             </div>
             <input type="hidden" id="productId">
@@ -183,12 +185,11 @@
             <div class="lot-rule-preview" id="lotBuilder"></div>
             <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
           </form>
-          <div class="panel">
+          <div class="panel certificate-preview-panel">
             <div class="panel-head">
-              <h2>Catalogue Search</h2>
-              <input class="search-box" id="productSearch" placeholder="OM553-02-02-045">
+              <h2>Certificate Preview</h2>
             </div>
-            <div id="productList" class="list"></div>
+            <img id="certificatePreview" class="certificate-preview" alt="Certificate preview">
           </div>
         </div>
       </section>

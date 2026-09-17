@@ -1662,3 +1662,25 @@ td a:hover { border-bottom-color: currentColor; }
     animation: none;
   }
 }
+
+.certificate-preview-panel {
+  align-self: start;
+  position: sticky;
+  top: var(--gap);
+}
+
+.product-search { flex: 1 1 auto; min-width: 80px; max-width: 150px; padding-block: 6px; font-size: 13px; }
+#productForm .panel-head h2 { white-space: nowrap; flex: 0 0 auto; }
+
+.certificate-preview-panel { justify-self: start; max-width: 100%; }
+
+.certificate-preview {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 190px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
