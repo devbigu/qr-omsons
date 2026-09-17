@@ -42,9 +42,9 @@
 
     <main>
       <header class="topbar">
-        <div>
-          <h1>Omsons QR Label Generator</h1>
-          <p>Catalogue lookup, lot numbering, printable labels, and public COA verification.</p>
+        <button class="secondary compact sidebar-toggle" id="sidebarToggle" type="button" aria-label="Toggle sidebar" aria-pressed="false">&#9776;</button>
+        <div class="topbar-title">
+          <h2>Omsons QR Label Generator</h1>
         </div>
         <div class="topbar-actions">
           <button class="secondary compact" id="logoutButton" type="button">Logout</button>
@@ -79,14 +79,32 @@
       </section>
 
       <section class="screen" id="products">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Product Master</h2>
+            <span class="muted" id="productCount"></span>
+            <button class="secondary" type="button" id="clearProductFilters">Clear filters</button>
+            <button type="button" id="addProduct">+ Add Product</button>
+          </div>
+          <div class="table-wrap product-table-wrap">
+            <table>
+              <thead id="productTableHead"></thead>
+              <tbody id="productRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <dialog class="product-dialog" id="productDialog">
         <div class="split-layout">
           <form class="panel form-grid" id="productForm">
             <div class="panel-head">
               <h2>Product Master</h2>
               <input class="search-box product-search" id="productSearch" list="productCatalogueList" placeholder="Catalogue no." autocomplete="off" aria-label="Open product by catalogue number">
               <datalist id="productCatalogueList"></datalist>
-              <button type="submit">Save Product</button>
+              <button class="secondary" type="button" id="resetProduct">Reset</button>
             </div>
+            <div class="lot-rule-preview lot-number-only" id="lotBuilder"></div>
             <input type="hidden" id="productId">
             <input type="hidden" id="productType" value="Syringe filter">
             <input type="hidden" id="category" value="Membrane filter">
@@ -95,103 +113,97 @@
             <input type="hidden" id="hsnCode" value="">
             <input type="hidden" id="labelTemplate" value="omsons_sample_v1">
             <input type="hidden" id="certificateTemplate" value="standard_coa_v1">
-            <label>Product name<select id="productName" required>
-              <option value="">Select product line</option>
-              <option value="Nylon Syringe Filters">Nylon Syringe Filters</option>
-              <option value="Nylon Syringe Filters with Micro-glass Fiber">Nylon Syringe Filters with Micro-glass Fiber</option>
-              <option value="High Flow Syringe Filters">High Flow Syringe Filters</option>
-              <option value="High Flow Syringe Filters with Micro-glass Fiber">High Flow Syringe Filters with Micro-glass Fiber</option>
-              <option value="CA Syringe Filters">CA Syringe Filters</option>
-              <option value="CA Syringe Filters with Micro-glass Fiber">CA Syringe Filters with Micro-glass Fiber</option>
-              <option value="PVDF Syringe Filters">PVDF Syringe Filters</option>
-              <option value="PVDF Syringe Filters with Micro-glass Fiber">PVDF Syringe Filters with Micro-glass Fiber</option>
-              <option value="PES Syringe Filters">PES Syringe Filters</option>
-              <option value="PES Syringe Filters with Micro-glass Fiber">PES Syringe Filters with Micro-glass Fiber</option>
-              <option value="PTFE Syringe Filters, Hydrophobic">PTFE Syringe Filters, Hydrophobic</option>
-              <option value="PTFE Syringe Filters, Hydrophilic">PTFE Syringe Filters, Hydrophilic</option>
-              <option value="PTFE Syringe Filters with Micro-glass Fiber">PTFE Syringe Filters with Micro-glass Fiber</option>
-              <option value="Glass Fiber Syringe Filters">Glass Fiber Syringe Filters</option>
-              <option value="Glass Fiber Syringe Filters with Micro-glass Fiber">Glass Fiber Syringe Filters with Micro-glass Fiber</option>
-              <option value="MCE Syringe Filters">MCE Syringe Filters</option>
-              <option value="MCE Syringe Filters with Micro-glass Fiber">MCE Syringe Filters with Micro-glass Fiber</option>
-              <option value="PP Syringe Filters">PP Syringe Filters</option>
-              <option value="PP Syringe Filters with Micro-glass Fiber">PP Syringe Filters with Micro-glass Fiber</option>
-            </select></label>
+            <label>Product name<input id="productName" required list="productNameOptions" placeholder="Select product line" autocomplete="off" class="combo"><datalist id="productNameOptions">
+              <option value="Nylon Syringe Filters"></option>
+              <option value="Nylon Syringe Filters with Micro-glass Fiber"></option>
+              <option value="High Flow Syringe Filters"></option>
+              <option value="High Flow Syringe Filters with Micro-glass Fiber"></option>
+              <option value="CA Syringe Filters"></option>
+              <option value="CA Syringe Filters with Micro-glass Fiber"></option>
+              <option value="PVDF Syringe Filters"></option>
+              <option value="PVDF Syringe Filters with Micro-glass Fiber"></option>
+              <option value="PES Syringe Filters"></option>
+              <option value="PES Syringe Filters with Micro-glass Fiber"></option>
+              <option value="PTFE Syringe Filters, Hydrophobic"></option>
+              <option value="PTFE Syringe Filters, Hydrophilic"></option>
+              <option value="PTFE Syringe Filters with Micro-glass Fiber"></option>
+              <option value="Glass Fiber Syringe Filters"></option>
+              <option value="Glass Fiber Syringe Filters with Micro-glass Fiber"></option>
+              <option value="MCE Syringe Filters"></option>
+              <option value="MCE Syringe Filters with Micro-glass Fiber"></option>
+              <option value="PP Syringe Filters"></option>
+              <option value="PP Syringe Filters with Micro-glass Fiber"></option>
+            </datalist></label>
             <label>Make<input id="company" required placeholder="Omsons Germany"></label>
             <label>Catalog No.<input id="catalogueNumber" required placeholder="OM260-020"></label>
-            <label>Membrane<select id="membrane" required>
-              <option value="">Select membrane</option>
-              <option value="Nylon">Nylon</option>
-              <option value="Nylon with Micro-glass Fiber">Nylon with Micro-glass Fiber</option>
-              <option value="High Flow">High Flow</option>
-              <option value="High Flow with Micro-glass Fiber">High Flow with Micro-glass Fiber</option>
-              <option value="CA">CA</option>
-              <option value="CA with Micro-glass Fiber">CA with Micro-glass Fiber</option>
-              <option value="PVDF">PVDF</option>
-              <option value="PVDF with Micro-glass Fiber">PVDF with Micro-glass Fiber</option>
-              <option value="PES">PES</option>
-              <option value="PES with Micro-glass Fiber">PES with Micro-glass Fiber</option>
-              <option value="PTFE">PTFE</option>
-              <option value="PTFE with Micro-glass Fiber">PTFE with Micro-glass Fiber</option>
-              <option value="Glass Fiber">Glass Fiber</option>
-              <option value="Glass Fiber with Micro-glass Fiber">Glass Fiber with Micro-glass Fiber</option>
-              <option value="MCE">MCE</option>
-              <option value="MCE with Micro-glass Fiber">MCE with Micro-glass Fiber</option>
-              <option value="PP">PP</option>
-              <option value="PP with Micro-glass Fiber">PP with Micro-glass Fiber</option>
-            </select></label>
-            <label>Pore size<select id="poreSize" required>
-              <option value="">Select pore size</option>
-              <option value="0.2µm">0.2µm</option>
-              <option value="0.45µm">0.45µm</option>
-              <option value="0.5µm">0.5µm</option>
-              <option value="0.8µm">0.8µm</option>
-              <option value="1µm">1µm</option>
-              <option value="1.5µm">1.5µm</option>
-              <option value="2µm">2µm</option>
-              <option value="5µm">5µm</option>
-              <option value="10µm">10µm</option>
-            </select></label>
-            <label>Sterility<select id="sterilityType">
-              <option value="">Select sterility</option>
-              <option value="Sterile">Sterile</option>
-              <option value="Non-sterile">Non-sterile</option>
-            </select></label>
+            <label>Membrane<input id="membrane" required list="membraneOptions" placeholder="Select membrane" autocomplete="off" class="combo"><datalist id="membraneOptions">
+              <option value="Nylon"></option>
+              <option value="Nylon with Micro-glass Fiber"></option>
+              <option value="High Flow"></option>
+              <option value="High Flow with Micro-glass Fiber"></option>
+              <option value="CA"></option>
+              <option value="CA with Micro-glass Fiber"></option>
+              <option value="PVDF"></option>
+              <option value="PVDF with Micro-glass Fiber"></option>
+              <option value="PES"></option>
+              <option value="PES with Micro-glass Fiber"></option>
+              <option value="PTFE"></option>
+              <option value="PTFE with Micro-glass Fiber"></option>
+              <option value="Glass Fiber"></option>
+              <option value="Glass Fiber with Micro-glass Fiber"></option>
+              <option value="MCE"></option>
+              <option value="MCE with Micro-glass Fiber"></option>
+              <option value="PP"></option>
+              <option value="PP with Micro-glass Fiber"></option>
+            </datalist></label>
+            <label>Pore size<input id="poreSize" required list="poreSizeOptions" placeholder="Select pore size" autocomplete="off" class="combo"><datalist id="poreSizeOptions">
+              <option value="0.2µm"></option>
+              <option value="0.45µm"></option>
+              <option value="0.5µm"></option>
+              <option value="0.8µm"></option>
+              <option value="1µm"></option>
+              <option value="1.5µm"></option>
+              <option value="2µm"></option>
+              <option value="5µm"></option>
+              <option value="10µm"></option>
+            </datalist></label>
+            <label>Sterility<input id="sterilityType" list="sterilityTypeOptions" placeholder="Select sterility" autocomplete="off" class="combo"><datalist id="sterilityTypeOptions">
+              <option value="Sterile"></option>
+              <option value="Non-sterile"></option>
+            </datalist></label>
             <label>Housing<input id="housing" placeholder="Polypropylene"></label>
-            <label>Filter Diameter<select id="filterDiameter">
-              <option value="">Select diameter</option>
-              <option value="4">4</option>
-              <option value="13">13</option>
-              <option value="25">25</option>
-              <option value="33">33</option>
-            </select></label>
+            <label>Filter Diameter<input id="filterDiameter" list="filterDiameterOptions" placeholder="Select diameter" autocomplete="off" class="combo"><datalist id="filterDiameterOptions">
+              <option value="4"></option>
+              <option value="13"></option>
+              <option value="25"></option>
+              <option value="33"></option>
+            </datalist></label>
             <label>Burst pressure<input id="burstPressure" placeholder="&gt; 7kg/cm²"></label>
-            <label>Holdup Volume<select id="holdupVolume">
-              <option value="">Select holdup volume</option>
-              <option value="&lt; 5µl">&lt; 5µl</option>
-              <option value="&lt; 10µl">&lt; 10µl</option>
-              <option value="&lt; 20µl">&lt; 20µl</option>
-              <option value="&lt; 50µl">&lt; 50µl</option>
-              <option value="&lt; 70µl">&lt; 70µl</option>
-              <option value="NA">NA</option>
-            </select></label>
-            <label>Sterilization<select id="sterilizationMethod">
-              <option value="">Select sterilization</option>
-              <option value="ETO">ETO</option>
-              <option value="Gamma">Gamma</option>
-              <option value="ETO / Gamma">ETO / Gamma</option>
-            </select></label>
-            <div class="lot-rule-preview" id="lotBuilder"></div>
+            <label>Holdup Volume<input id="holdupVolume" list="holdupVolumeOptions" placeholder="Select holdup volume" autocomplete="off" class="combo"><datalist id="holdupVolumeOptions">
+              <option value="&lt; 5µl"></option>
+              <option value="&lt; 10µl"></option>
+              <option value="&lt; 20µl"></option>
+              <option value="&lt; 50µl"></option>
+              <option value="&lt; 70µl"></option>
+              <option value="NA"></option>
+            </datalist></label>
+            <label>Sterilization<input id="sterilizationMethod" list="sterilizationMethodOptions" placeholder="Select sterilization" autocomplete="off" class="combo"><datalist id="sterilizationMethodOptions">
+              <option value="ETO"></option>
+              <option value="Gamma"></option>
+              <option value="ETO / Gamma"></option>
+            </datalist></label>
             <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
+            <button class="wide" type="submit">Save Product</button>
           </form>
           <div class="panel certificate-preview-panel">
             <div class="panel-head">
               <h2>Certificate Preview</h2>
+              <button class="secondary compact dialog-close" type="button" id="closeProductDialog" aria-label="Close">&times;</button>
             </div>
             <img id="certificatePreview" class="certificate-preview" alt="Certificate preview">
           </div>
         </div>
-      </section>
+      </dialog>
 
       <section class="screen" id="generate">
         <div class="split-layout">
@@ -213,11 +225,18 @@
           </form>
           <div class="panel">
             <div class="panel-head">
-              <h2>Live Label Preview</h2>
+              <h2>Live Preview</h2>
+              <div class="button-row" role="tablist">
+                <button class="secondary compact preview-tab active" type="button" role="tab" data-preview-tab="label">Label</button>
+                <button class="secondary compact preview-tab" type="button" role="tab" data-preview-tab="certificate">Certificate</button>
+              </div>
               <button class="secondary" id="previewFromForm">Refresh</button>
             </div>
-            <div class="preview-stage">
+            <div class="preview-stage" data-preview-pane="label">
               <div id="singleLabelPreview"></div>
+            </div>
+            <div class="preview-stage" data-preview-pane="certificate" hidden>
+              <img id="genCertificatePreview" class="certificate-preview" alt="Certificate preview for the selected product">
             </div>
           </div>
         </div>

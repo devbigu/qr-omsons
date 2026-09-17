@@ -264,7 +264,7 @@ function suggestLot(product, manufacturingDate, lots = []) {
       year,
       monthCode,
       serial,
-      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + ${sterilityCode === "S" ? "sterile" : "non-sterile"} ${sterilityCode} + series ${serial}`
+      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + ${sterilityCode === "S" ? "sterile" : "non-sterile"} ${sterilityCode} + lot number ${serial}`
     };
   }
   const productCode = String(rule.productCode || "55").trim();
@@ -832,6 +832,14 @@ function isSterileCertificate(certificate) {
   return Boolean(value) && !/^non[\s-]?sterile$/i.test(value);
 }
 
+// Non-OM catalogue numbers get an unbranded certificate: same layout, with the header, signature,
+// footer and border blanked.
+// A blank catalogue number (e.g. an empty product form) keeps the normal branded look.
+function isOmsonsCatalogue(catalogueNumber) {
+  const value = String(catalogueNumber || "").trim();
+  return !value || /^OM/i.test(value);
+}
+
 function formatCertificateDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -862,8 +870,9 @@ async function buildCertificateSvg(certificate) {
   }
 
   const productStatus = sterile ? "Sterile" : "Non-Sterile";
-  const productMembrane = data.membrane || certificate.productName || "Nylon";
-  const productLine = `Product : ${productMembrane}, Syringe Filters, ${productStatus}`;
+  const productLine = `${certificate.productName || `${data.membrane || "Nylon"} Syringe Filters`}, ${productStatus}`;
+  // Shrink long names so they stay inside the certificate border (~960px at ~0.55em per character).
+  const productLineSize = Math.min(32, Math.floor(960 / (productLine.length * 0.55)));
   const fields = [
     certificateSvgText(300, 364, data.company || "Omsons", 24, 28),
     certificateSvgText(300, 404, data.poreSize, 24, 28),
@@ -882,8 +891,14 @@ async function buildCertificateSvg(certificate) {
 <svg xmlns="http://www.w3.org/2000/svg" width="1227" height="1720" viewBox="0 0 1227 1720">
   <image width="1227" height="1720" href="data:image/png;base64,${templateBase64}" />
   <rect x="116" y="264" width="648" height="52" fill="#fff" />
+  ${isOmsonsCatalogue(certificate.catalogueNumber) ? "" : `<g fill="#fff">
+    <rect x="74" y="70" width="1080" height="175" />
+    <rect x="74" y="1386" width="1080" height="264" />
+    <rect x="74" y="70" width="16" height="1580" />
+    <rect x="1138" y="70" width="16" height="1580" />
+  </g>`}
   <g fill="#1a1a18" font-family="Arial, Helvetica, sans-serif">
-    ${certificateSvgText(128, 308, productLine, 32, 56)}
+    ${certificateSvgText(128, 308, productLine, productLineSize, 90)}
     ${fields}
   </g>
 </svg>`;

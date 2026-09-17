@@ -30,11 +30,13 @@ function infoSpan(label, value = "") {
   return `<span>${escapeHtml(label)} : <strong>${escapeHtml(value)}</strong></span>`;
 }
 
-function renderShell(content) {
+function renderShell(content, branded = true) {
+  const hidden = branded ? "" : ' style="visibility: hidden"';
+  const borderless = branded ? "" : ' style="border-color: transparent"';
   mount.innerHTML = `
     <section class="certificate-page" aria-label="Certificate of Quality">
-      <div class="layer-one">
-        <div class="header">
+      <div class="layer-one"${borderless}>
+        <div class="header"${hidden}>
           <p style="color: #3FAFE3; font-size: 24px">Certificate of Quality</p>
           <img src="logo.png" alt="Omsons logo" />
         </div>
@@ -60,8 +62,9 @@ function renderCertificateHtml(certificate) {
   const data = certificate.certificateData || {};
   const sterile = isSterile(data.sterilityType);
   const productStatus = sterile ? "Sterile" : "Non-Sterile";
-  const membrane = data.membrane || "Nylon";
-  const productLine = `${membrane}, Syringe Filters, ${productStatus}`;
+  const catalogue = String(certificate.catalogueNumber || "").trim();
+  const branded = !catalogue || /^OM/i.test(catalogue);
+  const productLine = `${certificate.productName || `${data.membrane || "Nylon"} Syringe Filters`}, ${productStatus}`;
   const expiry = formatDate(data.expiryDate);
   const infoFields = [
     ["MAKE", data.company || "Omsons Germany"],
@@ -79,7 +82,7 @@ function renderCertificateHtml(certificate) {
 
   renderShell(`
     <div class="layer-two" style="">
-      <p>Product : ${escapeHtml(productLine)}</p>
+      <p>${escapeHtml(productLine)}</p>
       <div class="info">
         ${infoFields.map(([label, value]) => infoSpan(label, value)).join("")}
       </div>
@@ -132,14 +135,14 @@ function renderCertificateHtml(certificate) {
         </div>
       </div>
 
-      <div>
+      <div${branded ? "" : ' style="visibility: hidden"'}>
         <div style="display: grid; justify-items: right">
           <img src="signature.png" alt="Authorised signature" />
           <span style="color: #3FAFE3">Authorised Signatory</span>
         </div>
       </div>
 
-      <div style="display: grid;">
+      <div style="display: grid;${branded ? "" : " visibility: hidden;"}">
         <p style="text-align: left; font-weight: bold">HEAD OFFICE / PLANT </p>
         <div style="text-align: left; display: grid; grid-column: 1 / 1; grid-template-columns: repeat(1, 1fr); column-gap: 2px;">
           <span style="font-size: 12px">Khuda Kalan to Sapehra Road, Vill. Sapehra, P.O. Pilkhani - 133104, Ambala Cantt, Haryana - INDIA</span>
@@ -148,7 +151,7 @@ function renderCertificateHtml(certificate) {
         <span style="display: flex; font-size: 12px"><p style="font-weight: bold; font-size: 11px">INTERNATIONAL OFFICE :</p> <p> Motorstraße 62, 80809 München, GERMANY</p></span>
       </div>
     </div>
-  `);
+  `, branded);
 }
 
 function renderCertificate(certificate) {

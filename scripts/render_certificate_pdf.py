@@ -63,12 +63,20 @@ def main():
     page = doc[0]
 
     product_status = "Sterile" if sterile else "Non-Sterile"
-    product_membrane = data.get("membrane") or payload.get("productName") or "Nylon"
-    product_line = f"{product_membrane}, Syringe Filters, {product_status}"
+    product_name = payload.get("productName") or f"{data.get('membrane') or 'Nylon'} Syringe Filters"
+    product_line = f"{product_name}, {product_status}"
 
     # Replace the fixed product line in the template, then fill the blank fields.
     cover(page, (58, 132, 382, 158))
-    write(page, 64, 154, product_line, size=16, max_chars=56)
+    # Non-OM catalogue numbers get an unbranded certificate: blank the header, signature, footer and border.
+    catalogue = clean(payload.get("catalogueNumber")).strip().upper()
+    if catalogue and not catalogue.startswith("OM"):
+        cover(page, (37, 35, 577, 122.5))
+        cover(page, (37, 693, 577, 825))
+        cover(page, (37, 35, 45, 825))
+        cover(page, (569, 35, 577, 825))
+    # Shrink long names so they stay inside the page border (~480pt at ~0.55em per character).
+    write(page, 64, 154, product_line, size=min(16, int(480 / (len(product_line) * 0.55))), max_chars=90)
 
     left_x = 150
     right_x = 405

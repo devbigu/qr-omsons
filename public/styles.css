@@ -1669,8 +1669,9 @@ td a:hover { border-bottom-color: currentColor; }
   top: var(--gap);
 }
 
-.product-search { flex: 1 1 auto; min-width: 80px; max-width: 150px; padding-block: 6px; font-size: 13px; }
-#productForm .panel-head h2 { white-space: nowrap; flex: 0 0 auto; }
+.product-search { flex: 1 1 0; min-width: 80px; max-width: none; padding-block: 6px; font-size: 13px; }
+#productForm .panel-head { flex-wrap: wrap; gap: 8px; }
+#productForm .panel-head h2 { white-space: nowrap; flex: 1 0 100%; }
 
 .certificate-preview-panel { justify-self: start; max-width: 100%; }
 
@@ -1683,4 +1684,91 @@ td a:hover { border-bottom-color: currentColor; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: #fff;
+}
+
+/* Product master list + add/edit dialog */
+#productCount { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.product-table-wrap { max-height: calc(100vh - 220px); }
+.product-table-wrap td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.product-row { cursor: pointer; }
+thead .filter-row th { padding: 8px 6px; }
+.filter-row input { width: 100%; min-width: 120px; min-height: 32px; padding: 5px 8px; font-size: 12.5px; font-weight: 600; }
+.filter-row input::placeholder { color: var(--muted); }
+
+.product-dialog {
+  width: 70vw;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  padding: 16px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(19, 26, 38, 0.3);
+}
+.product-dialog::backdrop { background: rgba(19, 26, 38, 0.45); backdrop-filter: blur(2px); }
+.dialog-close { font-size: 18px; line-height: 1; }
+
+/* Compact form so the whole dialog fits one screen without scrolling */
+.product-dialog .split-layout { grid-template-columns: minmax(340px, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.product-dialog .panel { padding: 14px 16px; }
+.product-dialog .panel-head { margin-bottom: 4px; padding-bottom: 10px; }
+.product-dialog #productForm .panel-head h2 { flex: 0 0 auto; }
+.product-dialog .form-grid { gap: 8px 12px; align-content: start; }
+.product-dialog label { gap: 3px; }
+.product-dialog input,
+.product-dialog select { min-height: 34px; padding-block: 5px; }
+.product-dialog .lot-rule-preview { min-height: 0; padding: 8px 12px; margin: 0; }
+.product-dialog .checkbox-row { padding-block: 6px; margin: 0; }
+.product-dialog .certificate-preview-panel { position: static; display: flex; flex-direction: column; }
+.product-dialog .certificate-preview { max-height: calc(100vh - 140px); margin: auto; }
+
+@media (max-width: 860px) {
+  .product-dialog { width: calc(100vw - 32px); }
+  .product-dialog .split-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Dialog: equal-height panels, one-line header, lot number on top */
+.product-dialog .certificate-preview-panel { align-self: stretch; }
+.product-dialog #productForm .panel-head { flex-wrap: nowrap; }
+.product-dialog #productForm .panel-head button { white-space: nowrap; }
+.product-dialog .product-search { min-width: 120px; }
+.lot-number-only {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Generate: label / certificate preview tabs */
+button.secondary.preview-tab.active { border-color: var(--brand); background: var(--brand); color: #fff; }
+[data-preview-pane="certificate"] .certificate-preview { margin-inline: auto; }
+
+/* Typable dropdowns (input + datalist) styled like selects */
+input.combo {
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' stroke='%2366748c' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+}
+input.combo::-webkit-calendar-picker-indicator { opacity: 0; cursor: pointer; }
+
+/* Sidebar toggle: collapsed = icon rail, expands over content on hover */
+.topbar { align-items: center; justify-content: flex-start; }
+.topbar-title { flex: 1 1 auto; min-width: 0; }
+.sidebar-toggle { font-size: 18px; line-height: 1; }
+
+@media (min-width: 861px) {
+  body.sidebar-collapsed { --sidebar-w: 76px; }
+  .sidebar { transition: width var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+  .sidebar-collapsed .sidebar { width: 76px; }
+  .sidebar-collapsed .sidebar:hover { width: 264px; box-shadow: var(--shadow-lg); }
+  .sidebar-collapsed .sidebar:not(:hover) .nav-label,
+  .sidebar-collapsed .sidebar:not(:hover) .sidebar-foot { display: none; }
+  .sidebar-collapsed .sidebar:not(:hover) .brand-logo { max-width: 44px; padding: 4px; }
+}
+@media (max-width: 860px) {
+  .sidebar-toggle { display: none; }
 }

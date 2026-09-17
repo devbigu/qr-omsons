@@ -77,3 +77,22 @@ test("delivery URL handles certificates stored as WebP", () => {
     "https://res.cloudinary.com/demo/image/upload/f_jpg,q_auto:good/v1/CERT-X.jpg"
   );
 });
+
+test("certificate shows the full product name and drops header, signature, footer and border for non-OM catalogues", async () => {
+  const certificate = (catalogueNumber) => app.buildCertificateSvg({
+    catalogueNumber,
+    productName: "Nylon Syringe Filters",
+    lotNumber: "SNY0456S01",
+    certificateData: { membrane: "Nylon", sterilityType: "Sterile" }
+  });
+  const branded = await certificate("OM553-02");
+  const unbranded = await certificate("XY553-02");
+
+  assert.match(branded, />Nylon Syringe Filters, Sterile</);
+  assert.doesNotMatch(branded, /Product :/);
+  assert.doesNotMatch(branded, /y="1386"/);
+  assert.match(unbranded, /<rect x="74" y="70" width="1080"/);
+  assert.match(unbranded, /<rect x="74" y="1386"/);
+  assert.match(unbranded, /XY553-02/);
+  assert.doesNotMatch(await certificate(""), /y="1386"/, "blank catalogue keeps the branded look");
+});

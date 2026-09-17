@@ -183,8 +183,40 @@ function makePlaceholderQr() {
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 
+// Shelf life by sterilization method: ETO 3 years, Gamma 2 years ("ETO / Gamma" takes the shorter).
+function expiryFor(product, manufacturingDate) {
+  const method = String(product?.sterilizationMethod || "").toLowerCase();
+  const years = method.includes("gamma") ? 2 : method.includes("eto") ? 3 : 0;
+  if (!years || !manufacturingDate) return "";
+  const date = new Date(`${manufacturingDate}T00:00:00Z`);
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  return date.toISOString().slice(0, 10);
+}
+
+// Same rule as the server's isSterileCertificate: blank or "non-sterile" means non-sterile.
+function isSterile(product) {
+  const value = String(product?.sterilityType || "").trim();
+  return Boolean(value) && !/^non[\s-]?sterile$/i.test(value);
+}
+
+function applyExpiry() {
+  const mfg = $("#manufacturingDate").value;
+  const input = $("#expiryDate");
+  // Non-sterile products carry only a manufacturing date.
+  const sterile = isSterile(state.currentProduct);
+  input.closest("label").hidden = !sterile;
+  const max = sterile ? expiryFor(state.currentProduct, mfg) : "";
+  input.min = mfg;
+  input.max = max;
+  input.value = max;
+}
+
 function previewFromForm() {
   const product = state.currentProduct || {};
+  const { _id, lotRule, isActive, createdAt, updatedAt, ...fields } = product;
+  $("#genCertificatePreview").src = product.catalogueNumber
+    ? `/api/certificate-preview.svg?${new URLSearchParams({ ...fields, lotNumber: $("#lotNumber").value, expiryDate: $("#expiryDate").value })}`
+    : "";
   fillLabel($("#singleLabelPreview"), {
     productName: product.productName || $("#productName").value || "Puricap PES",
     catalogueNumber: $("#genCatalogue").value || product.catalogueNumber || "OM553-02-02-045",
@@ -257,14 +289,12 @@ function productPayload() {
 }
 
 function setSelect(id, value) {
-  const el = $(id);
-  el.value = value || "";
-  // legacy records may hold values outside the option list; keep them selectable
-  if (value && el.value !== value) el.add(new Option(value, value, false, true), el.querySelector('option[value="__custom"]'));
+  $(id).value = value || "";
 }
 
 function fillProductForm(product) {
   $("#productId").value = product._id || "";
+  state.loadedCatalogue = product.catalogueNumber || "";
   setSelect("#productName", product.productName || "");
   $("#catalogueNumber").value = product.catalogueNumber || "";
   $("#productType").value = product.productType || "Syringe filter";
@@ -288,8 +318,39 @@ function fillProductForm(product) {
   refreshProductPreview();
 }
 
+// Column headers of public/assets/syringe-filter.xlsx, in sheet order.
+const productColumns = ["productName", "productType", "category", "catalogueNumber", "membrane", "poreSize",
+  "technicalDetail", "sterilityType", "packSize", "hsnCode", "burstPressure", "company", "filterDiameter",
+  "holdupVolume", "housing", "sterilizationMethod"];
+const productFilters = {};
+
+function renderProductTableHead() {
+  const title = (key) => key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+  $("#productTableHead").innerHTML = `
+    <tr class="filter-row">${productColumns.map((key) => `<th><input data-product-filter="${key}" placeholder="${html(title(key))}" aria-label="Filter by ${html(title(key))}"></th>`).join("")}<th>Status</th></tr>`;
+}
+
+function renderProductTable() {
+  const rows = state.products.filter((product) => Object.entries(productFilters)
+    .every(([key, value]) => String(product[key] ?? "").toLowerCase().includes(value)));
+  $("#productCount").textContent = `${rows.length} of ${state.products.length}`;
+  $("#productRows").innerHTML = rows.map((product) => `
+    <tr class="product-row" data-edit-product="${html(product.catalogueNumber)}">
+      ${productColumns.map((key) => `<td>${html(product[key])}</td>`).join("")}
+      <td><span class="${product.isActive === false ? "status-bad" : "status-valid"}">${product.isActive === false ? "inactive" : "active"}</span></td>
+    </tr>
+  `).join("") || `<tr><td colspan="${productColumns.length + 1}">No products found.</td></tr>`;
+}
+
+function openProductDialog(product) {
+  $("#productSearch").value = "";
+  fillProductForm(product);
+  $("#productDialog").showModal();
+}
+
 async function loadProducts(preferredCatalogue = "") {
   state.products = await api("/api/products");
+  renderProductTable();
   $("#productCatalogueList").replaceChildren(...state.products.map((product) =>
     new Option(`${product.productName} - ${product.membrane} - ${product.poreSize}`, product.catalogueNumber)));
 
@@ -353,14 +414,7 @@ async function updateLotBuilder() {
     sterilityType: $("#sterilityType").value
   });
   const lot = await api(`/api/lots/preview?${params}`);
-  const part = (code, label) => code ? `${html(code)} <small>(${html(label)})</small>` : `– <small>(${html(label)})</small>`;
-  $("#lotBuilder").innerHTML = `${[
-    part(lot.membraneCode, "membrane"),
-    part(lot.poreCode, "pore size"),
-    part(lot.yearCode, "year"),
-    part(lot.sterilityCode, "sterility"),
-    part(lot.serial, "series")
-  ].join(" + ")}<br>Lot number: <strong>${html(lot.lotNumber || "select membrane and pore size")}</strong>`;
+  $("#lotBuilder").textContent = lot.lotNumber || "----------";
   return lot;
 }
 
@@ -382,30 +436,39 @@ function refreshProductPreview() {
 const customOptionFields = ["productName", "membrane", "poreSize", "filterDiameter", "holdupVolume", "sterilizationMethod"];
 
 function addCustomOption(field, value) {
-  const select = $(`#${field}`);
-  if ([...select.options].some((option) => option.value === value)) return;
-  select.add(new Option(value, value), select.querySelector('option[value="__custom"]'));
+  const list = $(`#${field}Options`);
+  if ([...list.options].some((option) => option.value === value)) return;
+  list.append(new Option("", value));
+}
+
+// Typable dropdowns: <input list> + <datalist>. The value is cleared while focused so the
+// full option list shows; it comes back on blur if nothing new was typed.
+function setupComboboxes() {
+  $$("#productForm input.combo").forEach((input) => {
+    const placeholder = input.placeholder;
+    input.addEventListener("focus", () => {
+      input.dataset.saved = input.value;
+      input.placeholder = input.value || placeholder;
+      input.value = "";
+    });
+    input.addEventListener("blur", () => {
+      if (!input.value.trim()) input.value = input.dataset.saved || "";
+      input.value = input.value.trim();
+      input.placeholder = placeholder;
+      refreshProductPreview();
+    });
+  });
 }
 
 async function setupCustomOptions() {
+  setupComboboxes();
   customOptionFields.forEach((field) => {
-    const select = $(`#${field}`);
-    select.add(new Option("+ Add custom…", "__custom"));
-    select.dataset.previous = select.value;
-    select.addEventListener("change", () => {
-      if (select.value !== "__custom") {
-        select.dataset.previous = select.value;
-        return;
-      }
-      const label = select.closest("label")?.firstChild?.textContent?.trim() || "option";
-      const value = window.prompt(`New ${label}:`)?.trim();
-      if (!value) {
-        select.value = select.dataset.previous || "";
-        return;
-      }
+    const input = $(`#${field}`);
+    input.addEventListener("change", () => {
+      const value = input.value.trim();
+      const known = [...$(`#${field}Options`).options].some((option) => option.value === value);
+      if (!value || known) return;
       addCustomOption(field, value);
-      select.value = value;
-      select.dataset.previous = value;
       api("/api/custom-options", { method: "POST", body: JSON.stringify({ field, value }) })
         .catch((error) => toast(error.message));
     });
@@ -420,6 +483,7 @@ async function refreshLotNumber() {
   const date = $("#manufacturingDate").value;
   const params = new URLSearchParams({ catalogueNumber: catalogue });
   if (date) params.set("manufacturingDate", date);
+  applyExpiry();
   const lot = await api(`/api/lots/suggest?${params}`);
   $("#lotNumber").value = lot.lotNumber;
   $("#lotRulePreview").innerHTML = `<strong>${html(lot.lotNumber)}</strong><br>${html(lot.ruleText)}${lot.serial ? "" : `<br>Month ${html(lot.month)} maps to code ${html(lot.monthCode)}`}`;
@@ -431,10 +495,12 @@ function updateGenerateButton() {
 
 async function saveProduct(event) {
   event.preventDefault();
-  const id = $("#productId").value;
   const payload = productPayload();
-  const saved = await api(id ? `/api/products/${id}` : "/api/products", {
-    method: id ? "PUT" : "POST",
+  // A different catalogue number means a new product, never a rename of the loaded one.
+  const isNew = !$("#productId").value ||
+    payload.catalogueNumber.trim().toUpperCase() !== state.loadedCatalogue.toUpperCase();
+  const saved = await api(isNew ? "/api/products" : `/api/products/${$("#productId").value}`, {
+    method: isNew ? "POST" : "PUT",
     body: JSON.stringify(payload)
   });
   fillProductForm(saved);
@@ -442,7 +508,8 @@ async function saveProduct(event) {
   await loadProducts(saved.catalogueNumber);
   await refreshLotNumber();
   await loadDashboard();
-  toast("Product saved.");
+  $("#productDialog").close();
+  toast(isNew ? "New product added." : "Product saved.");
 }
 
 async function generateLabels(event) {
@@ -573,11 +640,48 @@ function bindEvents() {
     }
   });
 
+  const setSidebar = (collapsed) => {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    $("#sidebarToggle").setAttribute("aria-pressed", String(collapsed));
+    try { localStorage.setItem("sidebarCollapsed", collapsed ? "1" : ""); } catch {}
+  };
+  try { setSidebar(localStorage.getItem("sidebarCollapsed") === "1"); } catch {}
+  $("#sidebarToggle").addEventListener("click", () =>
+    setSidebar(!document.body.classList.contains("sidebar-collapsed")));
+
   $$(".nav-button").forEach((button) => button.addEventListener("click", () => {
     showScreen(button.dataset.screen);
     if (button.dataset.screen !== "certificates") clearLotViewerUrl();
   }));
-  $("#productForm").addEventListener("submit", saveProduct);
+  $("#productForm").addEventListener("submit", (event) => saveProduct(event).catch((error) => toast(error.message)));
+  $("#addProduct").addEventListener("click", () => openProductDialog({}));
+  $("#closeProductDialog").addEventListener("click", () => $("#productDialog").close());
+  // Clicking the dimmed backdrop (the dialog element itself) closes it.
+  $("#productDialog").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+  });
+  $("#productRows").addEventListener("click", (event) => {
+    const row = event.target.closest("[data-edit-product]");
+    const product = row && state.products.find((item) => item.catalogueNumber === row.dataset.editProduct);
+    if (product) openProductDialog(product);
+  });
+  $("#productTableHead").addEventListener("input", (event) => {
+    const key = event.target.dataset.productFilter;
+    if (!key) return;
+    const value = event.target.value.trim().toLowerCase();
+    if (value) productFilters[key] = value;
+    else delete productFilters[key];
+    renderProductTable();
+  });
+  $("#clearProductFilters").addEventListener("click", () => {
+    $$("[data-product-filter]").forEach((input) => { input.value = ""; });
+    Object.keys(productFilters).forEach((key) => delete productFilters[key]);
+    renderProductTable();
+  });
+  $("#resetProduct").addEventListener("click", () => {
+    $("#productSearch").value = "";
+    fillProductForm({});
+  });
   $("#productSearch").addEventListener("keydown", (event) => {
     if (event.key === "Enter") event.preventDefault();
   });
@@ -599,6 +703,11 @@ function bindEvents() {
   $("#manufacturingDate").addEventListener("change", () => refreshLotNumber().catch((error) => toast(error.message)));
   $("#genCatalogue").addEventListener("change", () => lookupProduct().catch((error) => toast(error.message)));
   $("#previewFromForm").addEventListener("click", previewFromForm);
+  $("#expiryDate").addEventListener("change", previewFromForm);
+  $$("[data-preview-tab]").forEach((tab) => tab.addEventListener("click", () => {
+    $$("[data-preview-tab]").forEach((item) => item.classList.toggle("active", item === tab));
+    $$("[data-preview-pane]").forEach((pane) => { pane.hidden = pane.dataset.previewPane !== tab.dataset.previewTab; });
+  }));
   $("#generateForm").addEventListener("submit", (event) => generateLabels(event).catch((error) => toast(error.message)));
   $("#searchCertificates").addEventListener("click", () => {
     const lotNumber = $("#certLot").value.trim();
@@ -670,6 +779,7 @@ function bindEvents() {
 }
 
 async function boot() {
+  renderProductTableHead();
   bindEvents();
   const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   $("#manufacturingDate").value = localToday;
