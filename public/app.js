@@ -152,7 +152,6 @@ async function openLotViewer(lotNumber, historyMode = "push") {
   if (!lot) return;
   $("#certCatalogue").value = "";
   $("#certLot").value = lot;
-  $("#certSerial").value = "";
   showScreen("certificates");
   if (historyMode) setLotViewerUrl(lot, historyMode);
   await searchCertificates();
@@ -174,7 +173,6 @@ function fillLabel(target, label) {
   node.querySelector('[data-field="membranePore"]').textContent = membranePore || "PES: 0.45 + 0.2um";
   node.querySelector('[data-field="lotNumber"]').textContent = text(label.lotNumber, "S5516E");
   node.querySelector('[data-field="membrane"]').textContent = text(label.membrane, "PES");
-  node.querySelector('[data-field="serialNumber"]').textContent = text(label.serialNumber, "101");
   node.querySelector('[data-field="qrImagePath"]').src = text(label.qrImagePath, makePlaceholderQr());
   target.replaceChildren(node);
   return node;
@@ -193,7 +191,6 @@ function previewFromForm() {
     membrane: product.membrane || "PES",
     poreSize: product.poreSize || "0.45 + 0.2um",
     lotNumber: $("#lotNumber").value || "S5516E",
-    serialNumber: $("#startSerial").value || "101",
     qrImagePath: makePlaceholderQr()
   });
 }
@@ -335,10 +332,9 @@ async function loadDashboard() {
       <td>${html(label.certificateId)}</td>
       <td>${html(label.catalogueNumber)}</td>
       <td>${html(label.lotNumber)}</td>
-      <td>${html(label.serialNumber)}</td>
       <td class="status-valid">${html(label.status)}</td>
     </tr>
-  `).join("") || `<tr><td colspan="5">No labels generated yet.</td></tr>`;
+  `).join("") || `<tr><td colspan="4">No labels generated yet.</td></tr>`;
 }
 
 async function lookupProduct() {
@@ -363,7 +359,7 @@ async function updateLotBuilder() {
     part(lot.poreCode, "pore size"),
     part(lot.yearCode, "year"),
     part(lot.sterilityCode, "sterility"),
-    part(lot.serial, "serial")
+    part(lot.serial, "series")
   ].join(" + ")}<br>Lot number: <strong>${html(lot.lotNumber || "select membrane and pore size")}</strong>`;
   return lot;
 }
@@ -418,7 +414,7 @@ async function setupCustomOptions() {
   saved.forEach(({ field, value }) => customOptionFields.includes(field) && addCustomOption(field, value));
 }
 
-async function refreshLotNumber(updateSerial = true) {
+async function refreshLotNumber() {
   const catalogue = $("#genCatalogue").value.trim();
   if (!catalogue) return;
   const date = $("#manufacturingDate").value;
@@ -426,27 +422,11 @@ async function refreshLotNumber(updateSerial = true) {
   if (date) params.set("manufacturingDate", date);
   const lot = await api(`/api/lots/suggest?${params}`);
   $("#lotNumber").value = lot.lotNumber;
-  if (updateSerial && lot.nextSerial) {
-    const count = Math.max(1, Number($("#endSerial").value) - Number($("#startSerial").value) + 1 || 1);
-    $("#startSerial").value = String(lot.nextSerial);
-    $("#endSerial").value = String(lot.nextSerial + count - 1);
-    updateBatchCount();
-  }
   $("#lotRulePreview").innerHTML = `<strong>${html(lot.lotNumber)}</strong><br>${html(lot.ruleText)}${lot.serial ? "" : `<br>Month ${html(lot.month)} maps to code ${html(lot.monthCode)}`}`;
   previewFromForm();
 }
-function updateBatchCount() {
-  const start = Number($("#startSerial").value);
-  const end = Number($("#endSerial").value);
-  const count = Number.isInteger(start) && Number.isInteger(end) && end >= start ? end - start + 1 : 0;
-  const valid = count > 0 && count <= 300;
-  $("#batchCount").textContent = count > 300
-    ? "A batch can contain no more than 300 labels."
-    : count
-      ? `${count} label${count === 1 ? "" : "s"} will be generated.`
-      : "End serial must be equal to or greater than start serial.";
-  $("#batchCount").classList.toggle("invalid", !valid);
-  $("#generateForm").querySelector('button[type="submit"]').disabled = !state.currentProduct || !valid;
+function updateGenerateButton() {
+  $("#generateForm").querySelector('button[type="submit"]').disabled = !state.currentProduct;
 }
 
 async function saveProduct(event) {
@@ -467,14 +447,12 @@ async function saveProduct(event) {
 
 async function generateLabels(event) {
   event.preventDefault();
-  await refreshLotNumber(false);
+  await refreshLotNumber();
   const payload = {
     catalogueNumber: $("#genCatalogue").value,
     lotNumber: $("#lotNumber").value,
     manufacturingDate: $("#manufacturingDate").value,
-    expiryDate: $("#expiryDate").value,
-    startSerial: Number($("#startSerial").value),
-    endSerial: Number($("#endSerial").value)
+    expiryDate: $("#expiryDate").value
   };
   const result = await api("/api/qr-batches/generate", {
     method: "POST",
@@ -495,19 +473,17 @@ function renderCertificateRows(rows) {
       <td>${html(certificate.certificateId)}</td>
       <td>${html(certificate.productName)}</td>
       <td><button class="lot-link" type="button" data-view-lot="${html(certificate.lotNumber)}">${html(certificate.lotNumber)}</button></td>
-      <td>${html(certificate.serialNumber)}</td>
       <td><a href="/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp" target="_blank" rel="noopener">Open COA</a></td>
       <td>${downloadMenuButton(certificate)}</td>
       <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
     </tr>
-  `).join("") || `<tr><td colspan="7">No certificate records found.</td></tr>`;
+  `).join("") || `<tr><td colspan="6">No certificate records found.</td></tr>`;
 }
 
 async function searchCertificates() {
   const params = new URLSearchParams();
   if ($("#certCatalogue").value) params.set("catalogueNumber", $("#certCatalogue").value);
   if ($("#certLot").value) params.set("lotNumber", $("#certLot").value);
-  if ($("#certSerial").value) params.set("serialNumber", $("#certSerial").value);
   const rows = await api(`/api/certificates/search?${params}`);
   renderCertificateRows(rows);
 
@@ -532,7 +508,6 @@ async function loadBatches() {
     <tr>
       <td><strong>${html(batch.productName || batch.catalogueNumber)}</strong><br>${html(batch.catalogueNumber)}</td>
       <td><button class="lot-link" type="button" data-view-lot="${html(batch.lotNumber)}">${html(batch.lotNumber || "-")}</button></td>
-      <td>${html(batch.startSerial)}-${html(batch.endSerial)}</td>
       <td>${html(batch.quantity)}</td>
       <td>${html(batch.createdAt ? new Date(batch.createdAt).toLocaleString() : "-")}</td>
       <td>
@@ -572,7 +547,7 @@ async function deleteBatch(batchId, quantity) {
 
 async function deleteLabel(labelId, certificateId) {
   if (!labelId) return toast("This record cannot be deleted because its label ID is missing.");
-  const ok = confirm(`Delete ${certificateId}? This removes the label and COA record, so the serial can be generated again.`);
+  const ok = confirm(`Delete ${certificateId}? This removes the label and COA record.`);
   if (!ok) return;
 
   await api(`/api/qr-labels/${encodeURIComponent(labelId)}`, { method: "DELETE" });
@@ -623,12 +598,6 @@ function bindEvents() {
   refreshProductPreview();
   $("#manufacturingDate").addEventListener("change", () => refreshLotNumber().catch((error) => toast(error.message)));
   $("#genCatalogue").addEventListener("change", () => lookupProduct().catch((error) => toast(error.message)));
-  $("#startSerial").addEventListener("input", () => {
-    const start = Number($("#startSerial").value);
-    if (start > Number($("#endSerial").value)) $("#endSerial").value = String(start);
-    updateBatchCount();
-  });
-  $("#endSerial").addEventListener("input", updateBatchCount);
   $("#previewFromForm").addEventListener("click", previewFromForm);
   $("#generateForm").addEventListener("submit", (event) => generateLabels(event).catch((error) => toast(error.message)));
   $("#searchCertificates").addEventListener("click", () => {
@@ -708,7 +677,7 @@ async function boot() {
   await loadProducts();
   await loadDashboard();
   await refreshLotNumber().catch(() => {});
-  updateBatchCount();
+  updateGenerateButton();
   previewFromForm();
   await loadBatches();
 

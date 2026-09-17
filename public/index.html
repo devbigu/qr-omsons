@@ -44,7 +44,7 @@
       <header class="topbar">
         <div>
           <h1>Omsons QR Label Generator</h1>
-          <p>Catalogue lookup, serial generation, printable labels, and public COA verification.</p>
+          <p>Catalogue lookup, lot numbering, printable labels, and public COA verification.</p>
         </div>
         <div class="topbar-actions">
           <button class="secondary compact" id="logoutButton" type="button">Logout</button>
@@ -69,7 +69,6 @@
                   <th>Certificate</th>
                   <th>Catalogue</th>
                   <th>Lot</th>
-                  <th>Serial</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -211,9 +210,6 @@
             <label>Expiry date<input id="expiryDate" type="date"></label>
             <label class="wide">Lot number<input id="lotNumber" required readonly></label>
             <div class="lot-rule-preview" id="lotRulePreview"></div>
-            <label>Start serial<input id="startSerial" type="number" min="1" required value="101"></label>
-            <label>End serial<input id="endSerial" type="number" min="1" required value="101"></label>
-            <div class="batch-count wide" id="batchCount">1 label will be generated.</div>
           </form>
           <div class="panel">
             <div class="panel-head">
@@ -245,7 +241,6 @@
                   <tr>
                     <th>Product</th>
                     <th>Lot</th>
-                    <th>Serial range</th>
                     <th>Labels</th>
                     <th>Created</th>
                     <th>Action</th>
@@ -265,7 +260,6 @@
             <div class="filters">
               <input id="certCatalogue" placeholder="Catalogue number">
               <input id="certLot" placeholder="Lot number">
-              <input id="certSerial" type="number" placeholder="Serial">
               <button id="searchCertificates">Search</button>
               <button class="secondary" id="downloadLotZip" type="button" hidden>Download All (.zip)</button>
             </div>
@@ -280,7 +274,6 @@
                   <th>Certificate</th>
                   <th>Product</th>
                   <th>Lot</th>
-                  <th>Serial</th>
                   <th>Verification</th>
                   <th>Downloads</th>
                   <th>Action</th>
@@ -308,7 +301,6 @@
         <div class="label-gap"></div>
         <span>Lot. No.: <b data-field="lotNumber"></b></span>
         <span>Membranes : <b data-field="membrane"></b></span>
-        <span>Serial No.: <b data-field="serialNumber"></b></span>
       </div>
       <div class="qr-zone">
         <img data-field="qrImagePath" alt="QR code">

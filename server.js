@@ -264,7 +264,7 @@ function suggestLot(product, manufacturingDate, lots = []) {
       year,
       monthCode,
       serial,
-      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + ${sterilityCode === "S" ? "sterile" : "non-sterile"} ${sterilityCode} + serial ${serial}`
+      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + ${sterilityCode === "S" ? "sterile" : "non-sterile"} ${sterilityCode} + series ${serial}`
     };
   }
   const productCode = String(rule.productCode || "55").trim();
@@ -1111,11 +1111,7 @@ app.get("/api/lots", asyncRoute(async (req, res) => {
 app.get("/api/lots/suggest", asyncRoute(async (req, res) => {
   const product = await findProductByCatalogue(req.query.catalogueNumber || "");
   if (!product) return res.status(404).json({ error: "Product not found." });
-  const lot = suggestLot(product, req.query.manufacturingDate, await store.list("lots"));
-  const serials = (await store.list("qr_labels"))
-    .filter((label) => String(label.lotNumber).toUpperCase() === lot.lotNumber.toUpperCase())
-    .map((label) => Number(label.serialNumber));
-  res.json({ ...lot, nextSerial: serials.length ? Math.max(...serials) + 1 : 101 });
+  res.json(suggestLot(product, req.query.manufacturingDate, await store.list("lots")));
 }));
 
 app.get("/api/lots/preview", asyncRoute(async (req, res) => {
@@ -1176,8 +1172,15 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
 
   const suggestedLot = suggestLot(product, req.body.manufacturingDate, await store.list("lots"));
   const lotNumber = req.body.lotNumber?.trim() || suggestedLot.lotNumber;
-  const startSerial = serialToNumber(req.body.startSerial);
-  const quantity = req.body.quantity ? serialToNumber(req.body.quantity) : null;
+  // Serials are internal (they keep certificate IDs unique); when none is sent, take the lot's next one.
+  const lotSerials = (await store.list("qr_labels"))
+    .filter((label) => String(label.lotNumber).toUpperCase() === String(lotNumber).toUpperCase())
+    .map((label) => Number(label.serialNumber))
+    .filter(Number.isFinite);
+  const startSerial = req.body.startSerial
+    ? serialToNumber(req.body.startSerial)
+    : (lotSerials.length ? Math.max(...lotSerials) + 1 : 1);
+  const quantity = req.body.quantity ? serialToNumber(req.body.quantity) : 1;
   const endSerial = req.body.endSerial ? serialToNumber(req.body.endSerial) : startSerial + quantity - 1;
 
   if (!lotNumber) return res.status(400).json({ error: "Lot number is required." });

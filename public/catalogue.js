@@ -79,7 +79,6 @@ function renderCatalogue(record) {
         <h2>Lot Verification</h2>
         <div class="catalogue-details">
           ${detail("Lot number", lot.lotNumber)}
-          ${detail("Serial number", lot.serialNumber)}
           ${detail("Manufacturing date", formatDate(lot.manufacturingDate))}
           ${detail("Expiry date", formatDate(lot.expiryDate))}
           ${detail("Lot rule", lotBreakdown.ruleText)}
