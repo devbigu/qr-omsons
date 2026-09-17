@@ -384,7 +384,7 @@ async function lookupProduct() {
   previewFromForm();
   return product;
 }
-async function refreshLotNumber() {
+async function refreshLotNumber(updateSerial = true) {
   const catalogue = $("#genCatalogue").value.trim();
   if (!catalogue) return;
   const date = $("#manufacturingDate").value;
@@ -392,6 +392,12 @@ async function refreshLotNumber() {
   if (date) params.set("manufacturingDate", date);
   const lot = await api(`/api/lots/suggest?${params}`);
   $("#lotNumber").value = lot.lotNumber;
+  if (updateSerial && lot.nextSerial) {
+    const count = Math.max(1, Number($("#endSerial").value) - Number($("#startSerial").value) + 1 || 1);
+    $("#startSerial").value = String(lot.nextSerial);
+    $("#endSerial").value = String(lot.nextSerial + count - 1);
+    updateBatchCount();
+  }
   $("#lotRulePreview").innerHTML = `<strong>${html(lot.lotNumber)}</strong><br>${html(lot.ruleText)}${lot.serial ? "" : `<br>Month ${html(lot.month)} maps to code ${html(lot.monthCode)}`}`;
   previewFromForm();
 }
@@ -427,7 +433,7 @@ async function saveProduct(event) {
 
 async function generateLabels(event) {
   event.preventDefault();
-  await refreshLotNumber();
+  await refreshLotNumber(false);
   const payload = {
     catalogueNumber: $("#genCatalogue").value,
     lotNumber: $("#lotNumber").value,
@@ -443,6 +449,7 @@ async function generateLabels(event) {
   state.generatedLabels = result.labels;
   renderLabels(result.labels);
   fillLabel($("#singleLabelPreview"), result.labels[0]);
+  await refreshLotNumber();
   await loadDashboard();
   await Promise.all([searchCertificates(), loadBatches()]);
   showScreen("labels");

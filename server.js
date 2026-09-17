@@ -244,7 +244,8 @@ function suggestLot(product, manufacturingDate, lots = []) {
   const membraneCode = membraneLotCode(product.membrane);
   const poreCode = poreLotCode(product.poreSize);
   if (membraneCode && poreCode) {
-    const base = `${membraneCode}${poreCode}${year}`;
+    const yearCode = year.slice(-1);
+    const base = `${membraneCode}${poreCode}${yearCode}`;
     const matching = lots.filter((lot) => new RegExp(`^${base}\\d{2,}$`).test(String(lot.lotNumber || "")));
     const sameDay = manufacturingDate && matching.find((lot) =>
       lot.catalogueNumber === product.catalogueNumber && lot.manufacturingDate === manufacturingDate);
@@ -255,12 +256,13 @@ function suggestLot(product, manufacturingDate, lots = []) {
       lotNumber: `${base}${serial}`,
       prefix: membraneCode,
       poreCode,
+      yearCode,
       day,
       month,
       year,
       monthCode,
       serial,
-      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${year} + serial ${serial}`
+      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${yearCode} + serial ${serial}`
     };
   }
   const productCode = String(rule.productCode || "55").trim();
@@ -1107,7 +1109,11 @@ app.get("/api/lots", asyncRoute(async (req, res) => {
 app.get("/api/lots/suggest", asyncRoute(async (req, res) => {
   const product = await findProductByCatalogue(req.query.catalogueNumber || "");
   if (!product) return res.status(404).json({ error: "Product not found." });
-  res.json(suggestLot(product, req.query.manufacturingDate, await store.list("lots")));
+  const lot = suggestLot(product, req.query.manufacturingDate, await store.list("lots"));
+  const serials = (await store.list("qr_labels"))
+    .filter((label) => String(label.lotNumber).toUpperCase() === lot.lotNumber.toUpperCase())
+    .map((label) => Number(label.serialNumber));
+  res.json({ ...lot, nextSerial: serials.length ? Math.max(...serials) + 1 : 101 });
 }));
 
 app.get("/api/lots/:id", asyncRoute(async (req, res) => {

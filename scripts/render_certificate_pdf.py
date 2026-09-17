@@ -64,7 +64,7 @@ def main():
 
     product_status = "Sterile" if sterile else "Non-Sterile"
     product_membrane = data.get("membrane") or payload.get("productName") or "Nylon"
-    product_line = f"Product : {product_membrane}, Syringe Filters, {product_status}"
+    product_line = f"{product_membrane}, Syringe Filters, {product_status}"
 
     # Replace the fixed product line in the template, then fill the blank fields.
     cover(page, (58, 132, 382, 158))
