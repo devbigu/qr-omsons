@@ -254,14 +254,7 @@ function productPayload() {
     hsnCode: $("#hsnCode").value,
     labelTemplate: $("#labelTemplate").value,
     certificateTemplate: $("#certificateTemplate").value,
-    lotRule: {
-      prefix: $("#lotPrefix").value,
-      suffix: $("#lotSuffix").value,
-      productCode: $("#lotProductCode").value,
-      dateFormat: "DDM",
-      monthCodes: $("#lotMonthCodes").value.split(",").map((code) => code.trim()).filter(Boolean),
-      allowManualOverride: true
-    },
+    lotRule: state.editingLotRule,
     isActive: $("#isActive").checked
   };
 }
@@ -293,10 +286,8 @@ function fillProductForm(product) {
   $("#hsnCode").value = product.hsnCode || "";
   $("#labelTemplate").value = product.labelTemplate || "omsons_sample_v1";
   $("#certificateTemplate").value = product.certificateTemplate || "standard_coa_v1";
-  $("#lotPrefix").value = product.lotRule?.prefix || "S";
-  $("#lotSuffix").value = product.lotRule?.suffix || "";
-  $("#lotProductCode").value = product.lotRule?.productCode || "";
-  $("#lotMonthCodes").value = (product.lotRule?.monthCodes || ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]).join(",");
+  state.editingLotRule = product.lotRule;
+  updateLotBuilder().catch(() => {});
   $("#isActive").checked = product.isActive !== false;
 }
 
@@ -384,6 +375,23 @@ async function lookupProduct() {
   previewFromForm();
   return product;
 }
+async function updateLotBuilder() {
+  const params = new URLSearchParams({
+    membrane: $("#membrane").value,
+    poreSize: $("#poreSize").value,
+    sterilityType: $("#sterilityType").value
+  });
+  const lot = await api(`/api/lots/preview?${params}`);
+  const part = (code, label) => code ? `${html(code)} <small>(${html(label)})</small>` : `– <small>(${html(label)})</small>`;
+  $("#lotBuilder").innerHTML = `${[
+    part(lot.membraneCode, "membrane"),
+    part(lot.poreCode, "pore size"),
+    part(lot.yearCode, "year"),
+    part(lot.sterilityCode, "sterility"),
+    part(lot.serial, "serial")
+  ].join(" + ")}<br>Lot number: <strong>${html(lot.lotNumber || "select membrane and pore size")}</strong>`;
+}
+
 async function refreshLotNumber(updateSerial = true) {
   const catalogue = $("#genCatalogue").value.trim();
   if (!catalogue) return;
@@ -570,6 +578,9 @@ function bindEvents() {
   }));
   $("#productSearch").addEventListener("input", renderProducts);
   $("#productForm").addEventListener("submit", saveProduct);
+  ["#membrane", "#poreSize", "#sterilityType"].forEach((id) =>
+    $(id).addEventListener("change", () => updateLotBuilder().catch((error) => toast(error.message))));
+  updateLotBuilder().catch(() => {});
   $("#manufacturingDate").addEventListener("change", () => refreshLotNumber().catch((error) => toast(error.message)));
   $("#genCatalogue").addEventListener("change", () => lookupProduct().catch((error) => toast(error.message)));
   $("#startSerial").addEventListener("input", () => {

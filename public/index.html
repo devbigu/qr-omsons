@@ -94,7 +94,6 @@
             <input type="hidden" id="hsnCode" value="">
             <input type="hidden" id="labelTemplate" value="omsons_sample_v1">
             <input type="hidden" id="certificateTemplate" value="standard_coa_v1">
-            <input type="hidden" id="lotSuffix" value="">
             <label>Product name<select id="productName" required>
               <option value="">Select product line</option>
               <option value="Nylon Syringe Filters">Nylon Syringe Filters</option>
@@ -181,9 +180,7 @@
               <option value="Gamma">Gamma</option>
               <option value="ETO / Gamma">ETO / Gamma</option>
             </select></label>
-            <label>Lot prefix<input id="lotPrefix" value="S"></label>
-            <label>Lot product code<input id="lotProductCode" required placeholder="55"></label>
-            <label>Month codes<input id="lotMonthCodes" value="A,B,C,D,E,F,G,H,I,J,K,L"></label>
+            <div class="lot-rule-preview" id="lotBuilder"></div>
             <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
           </form>
           <div class="panel">

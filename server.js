@@ -1118,6 +1118,25 @@ app.get("/api/lots/suggest", asyncRoute(async (req, res) => {
   res.json({ ...lot, nextSerial: serials.length ? Math.max(...serials) + 1 : 101 });
 }));
 
+app.get("/api/lots/preview", asyncRoute(async (req, res) => {
+  const product = {
+    membrane: String(req.query.membrane || ""),
+    poreSize: String(req.query.poreSize || ""),
+    sterilityType: String(req.query.sterilityType || "")
+  };
+  const membraneCode = membraneLotCode(product.membrane);
+  const poreCode = poreLotCode(product.poreSize);
+  const lot = membraneCode && poreCode ? suggestLot(product, "", await store.list("lots")) : {};
+  res.json({
+    membraneCode,
+    poreCode,
+    yearCode: String(new Date().getFullYear()).slice(-1),
+    sterilityCode: /^sterile$/i.test(product.sterilityType.trim()) ? "S" : "N",
+    serial: lot.serial || "",
+    lotNumber: lot.lotNumber || ""
+  });
+}));
+
 app.get("/api/lots/:id", asyncRoute(async (req, res) => {
   const lot = await store.findOne("lots", { _id: req.params.id });
   if (!lot) return res.status(404).json({ error: "Lot not found." });
