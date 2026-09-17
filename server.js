@@ -324,13 +324,16 @@ async function uploadToCloudinary(buffer, options) {
 
   const timestamp = Math.floor(Date.now() / 1000);
   const params = {
-    folder: cloudinary.folder,
+    folder: options.folder ?? cloudinary.folder,
+    format: options.format,
     overwrite: true,
     public_id: options.publicId,
     timestamp
   };
   const form = new FormData();
-  for (const [key, value] of Object.entries(params)) form.append(key, String(value));
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") form.append(key, String(value));
+  }
   form.append("api_key", cloudinary.apiKey);
   form.append("signature", cloudinarySignature(params));
   form.append("file", new Blob([buffer], { type: options.contentType }), options.fileName);
@@ -844,25 +847,37 @@ function certificateDeliveryUrl(secureUrl, format) {
   const transformation = normalizedFormat === "jpg" ? "f_jpg,q_auto:good" : "f_webp,q_auto";
   return secureUrl
     .replace("/upload/", `/upload/${transformation}/`)
-    .replace(/\.svg(\?.*)?$/i, `.${normalizedFormat}$1`);
+    .replace(/\.(svg|webp)(\?.*)?$/i, `.${normalizedFormat}$2`);
 }
 
 async function uploadCertificateImage(certificate) {
   if (!hasCloudinaryConfig()) throw new Error("Cloudinary is required for certificate images.");
 
-  const safeId = safeCloudinaryId(certificate.certificateId);
+  // Image is named LOT_SERIAL (e.g. S5528F_101) so the QR link stays short (see certificateQrUrl).
+  // Generation rejects a lot+serial reused across catalogues, since uploads overwrite.
+  const publicId = `${certificate.lotNumber}_${certificate.serialNumber}`
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "-");
   const svg = await buildCertificateSvg(certificate);
   const uploaded = await uploadToCloudinary(Buffer.from(svg), {
     resourceType: "image",
-    publicId: `certificates/${safeId}`,
-    fileName: `${safeId}.svg`,
+    folder: "",
+    format: "webp",
+    publicId,
+    fileName: `${publicId}.svg`,
     contentType: "image/svg+xml"
   });
   return {
     secureUrl: uploaded.secure_url,
     publicId: uploaded.public_id,
-    webpUrl: certificateDeliveryUrl(uploaded.secure_url, "webp")
+    qrUrl: certificateQrUrl(uploaded.public_id)
   };
+}
+
+// Shortest Cloudinary link: no /image/upload/, no version, no extension, all uppercase so the
+// QR stays small. ~46 chars -> 29x29 modules, engravable at 11 mm.
+function certificateQrUrl(publicId, cloudName = cloudinary.cloudName) {
+  return `HTTPS://RES.CLOUDINARY.COM/${cloudName}/${publicId}`.toUpperCase();
 }
 
 async function ensureCertificateImage(certificate) {
@@ -1105,12 +1120,11 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
   const existing = await store.list("qr_labels");
   const duplicates = serials.filter((serialNumber) =>
     existing.some((label) =>
-      label.catalogueNumber === product.catalogueNumber &&
-      label.lotNumber === lotNumber &&
+      String(label.lotNumber).toUpperCase() === lotNumber.toUpperCase() &&
       Number(label.serialNumber) === serialNumber));
   if (duplicates.length) {
     return res.status(409).json({
-      error: "Duplicate serial numbers for this catalogue and lot.",
+      error: "Duplicate serial numbers for this lot.",
       duplicates
     });
   }
@@ -1160,9 +1174,10 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
       catalogueNumber: product.catalogueNumber,
       productName: product.productName,
       lotNumber,
+      serialNumber,
       certificateData
     });
-    const qrUrl = certificateImage.webpUrl;
+    const qrUrl = certificateImage.qrUrl;
     const qrAssets = await createQrAssets(qrUrl, certificateId);
     const label = await store.insert("qr_labels", {
       batchId: batch.batchId,
@@ -1564,7 +1579,7 @@ module.exports = app;
 module.exports.buildQrDxf = buildQrDxf;
 module.exports.buildCertificateSvg = buildCertificateSvg;
 module.exports.certificateDeliveryUrl = certificateDeliveryUrl;
-module.exports.createQrAssets = createQrAssets;
+module.exports.certificateQrUrl = certificateQrUrl;
 module.exports.initialiseStore = initialiseStore;
 module.exports.startServer = startServer;
 

@@ -58,19 +58,22 @@ test("legacy COA links redirect directly to the WebP certificate", async (t) => 
   assert.equal(response.headers.get("location"), "/api/certificates/CERT-TEST-1/image.webp");
 });
 
-test("QR encodes only the Cloudinary WebP certificate link", async () => {
-  const secureUrl =
-    "https://res.cloudinary.com/rfpc3br5/image/upload/v1782986293/omsons-qr-labels/certificates/CERT-OM553-S5528F-101.svg";
-  const webpUrl = app.certificateDeliveryUrl(secureUrl, "webp");
+test("certificate QR link is short enough to engrave at 11 mm", () => {
+  const QRCode = require("qrcode");
+  const url = app.certificateQrUrl("S5528F_101", "rfpc3br5");
+  assert.equal(url, "HTTPS://RES.CLOUDINARY.COM/RFPC3BR5/S5528F_101");
 
+  // Version 3 = 29x29 modules; the old long URL needed 49x49.
+  const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
+  assert.ok(qr.version <= 3, `QR version ${qr.version} too dense`);
+
+  const dxf = app.buildQrDxf({ certificateId: "CERT-OM553-S5528F-101", qrUrl: url });
+  assert.ok(dxf.includes(url));
+});
+
+test("delivery URL handles certificates stored as WebP", () => {
   assert.equal(
-    webpUrl,
-    "https://res.cloudinary.com/rfpc3br5/image/upload/f_webp,q_auto/v1782986293/omsons-qr-labels/certificates/CERT-OM553-S5528F-101.webp"
+    app.certificateDeliveryUrl("https://res.cloudinary.com/demo/image/upload/v1/CERT-X.webp", "jpg"),
+    "https://res.cloudinary.com/demo/image/upload/f_jpg,q_auto:good/v1/CERT-X.jpg"
   );
-
-  const dxf = app.buildQrDxf({ certificateId: "CERT-OM553-S5528F-101", qrUrl: webpUrl });
-  assert.ok(dxf.includes(webpUrl));
-
-  // Payload is the bare link, so the symbol stays small enough to print on an object.
-  assert.ok(webpUrl.length < 180);
 });
