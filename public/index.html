@@ -4,22 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Omsons QR Label Generator</title>
+  <meta name="theme-color" content="#06349b">
+  <link rel="icon" href="/assets/logo.png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">OMSONS</div>
-        
+        <img class="brand-logo" src="https://omsonsnsicom.yolasite.com/" alt="Omsons Germany" width="331" height="208"
+             onerror="this.onerror=null;this.src='/assets/logo.png'">
       </div>
       <nav>
-        <button class="nav-button active" data-screen="dashboard">Dashboard</button>
-        <button class="nav-button" data-screen="products">Products</button>
-        <button class="nav-button" data-screen="generate">Generate Labels</button>
-        <button class="nav-button" data-screen="labels">Label Preview</button>
-        <button class="nav-button" data-screen="certificates">COA Records</button>
+        <button class="nav-button active" data-screen="dashboard">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span>
+          <span class="nav-label">Dashboard</span>
+        </button>
+        <button class="nav-button" data-screen="products">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 7.3 12 12 3.5 7.3"/><path d="M12 12v9.5"/><path d="m3.5 7.3 8.5-4.8 8.5 4.8v9.4L12 21.5l-8.5-4.8Z"/></svg></span>
+          <span class="nav-label">Products</span>
+        </button>
+        <button class="nav-button" data-screen="generate">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20.5 14v.01M14 20.5v.01M20.5 20.5v.01"/></svg></span>
+          <span class="nav-label">Generate</span>
+        </button>
+        <button class="nav-button" data-screen="labels">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.3 13.3 20.6a2 2 0 0 1-2.8 0l-7-7A2 2 0 0 1 3 12.2V4.5A1.5 1.5 0 0 1 4.5 3h7.7a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.7Z"/><circle cx="7.8" cy="7.8" r="1.3"/></svg></span>
+          <span class="nav-label">Labels</span>
+        </button>
+        <button class="nav-button" data-screen="certificates">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.8H6.5A1.5 1.5 0 0 0 5 4.3v15.4a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V7.8Z"/><path d="M14 2.8v5h5"/><path d="M8.8 13.2h6.4M8.8 17h4.2"/></svg></span>
+          <span class="nav-label">COA</span>
+        </button>
       </nav>
+      <div class="sidebar-foot">Omsons QR Labels</div>
     </aside>
 
     <main>
@@ -29,7 +47,6 @@
           <p>Catalogue lookup, serial generation, printable labels, and public COA verification.</p>
         </div>
         <div class="topbar-actions">
-          <div class="storage-pill" id="storagePill">Storage</div>
           <button class="secondary compact" id="logoutButton" type="button">Logout</button>
         </div>
       </header>
@@ -78,96 +95,96 @@
             <input type="hidden" id="labelTemplate" value="omsons_sample_v1">
             <input type="hidden" id="certificateTemplate" value="standard_coa_v1">
             <input type="hidden" id="lotSuffix" value="">
-            <label>Product name<input id="productName" list="productLineOptions" required placeholder="Puricap PES"></label>
+            <label>Product name<select id="productName" required>
+              <option value="">Select product line</option>
+              <option value="Nylon Syringe Filters">Nylon Syringe Filters</option>
+              <option value="Nylon Syringe Filters with Micro-glass Fiber">Nylon Syringe Filters with Micro-glass Fiber</option>
+              <option value="High Flow Syringe Filters">High Flow Syringe Filters</option>
+              <option value="High Flow Syringe Filters with Micro-glass Fiber">High Flow Syringe Filters with Micro-glass Fiber</option>
+              <option value="CA Syringe Filters">CA Syringe Filters</option>
+              <option value="CA Syringe Filters with Micro-glass Fiber">CA Syringe Filters with Micro-glass Fiber</option>
+              <option value="PVDF Syringe Filters">PVDF Syringe Filters</option>
+              <option value="PVDF Syringe Filters with Micro-glass Fiber">PVDF Syringe Filters with Micro-glass Fiber</option>
+              <option value="PES Syringe Filters">PES Syringe Filters</option>
+              <option value="PES Syringe Filters with Micro-glass Fiber">PES Syringe Filters with Micro-glass Fiber</option>
+              <option value="PTFE Syringe Filters, Hydrophobic">PTFE Syringe Filters, Hydrophobic</option>
+              <option value="PTFE Syringe Filters, Hydrophilic">PTFE Syringe Filters, Hydrophilic</option>
+              <option value="PTFE Syringe Filters with Micro-glass Fiber">PTFE Syringe Filters with Micro-glass Fiber</option>
+              <option value="Glass Fiber Syringe Filters">Glass Fiber Syringe Filters</option>
+              <option value="Glass Fiber Syringe Filters with Micro-glass Fiber">Glass Fiber Syringe Filters with Micro-glass Fiber</option>
+              <option value="MCE Syringe Filters">MCE Syringe Filters</option>
+              <option value="MCE Syringe Filters with Micro-glass Fiber">MCE Syringe Filters with Micro-glass Fiber</option>
+              <option value="PP Syringe Filters">PP Syringe Filters</option>
+              <option value="PP Syringe Filters with Micro-glass Fiber">PP Syringe Filters with Micro-glass Fiber</option>
+            </select></label>
             <label>Make<input id="company" required placeholder="Omsons Germany"></label>
             <label>Catalog No.<input id="catalogueNumber" required placeholder="OM260-020"></label>
-            <label>Membrane<input id="membrane" list="membraneOptions" required placeholder="PES"></label>
-            <label>Pore size<input id="poreSize" list="poreSizeOptions" required placeholder="0.45µm"></label>
-            <label>Sterility<input id="sterilityType" list="sterilityOptions" placeholder="Non-sterile"></label>
+            <label>Membrane<select id="membrane" required>
+              <option value="">Select membrane</option>
+              <option value="Nylon">Nylon</option>
+              <option value="Nylon with Micro-glass Fiber">Nylon with Micro-glass Fiber</option>
+              <option value="High Flow">High Flow</option>
+              <option value="High Flow with Micro-glass Fiber">High Flow with Micro-glass Fiber</option>
+              <option value="CA">CA</option>
+              <option value="CA with Micro-glass Fiber">CA with Micro-glass Fiber</option>
+              <option value="PVDF">PVDF</option>
+              <option value="PVDF with Micro-glass Fiber">PVDF with Micro-glass Fiber</option>
+              <option value="PES">PES</option>
+              <option value="PES with Micro-glass Fiber">PES with Micro-glass Fiber</option>
+              <option value="PTFE">PTFE</option>
+              <option value="PTFE with Micro-glass Fiber">PTFE with Micro-glass Fiber</option>
+              <option value="Glass Fiber">Glass Fiber</option>
+              <option value="Glass Fiber with Micro-glass Fiber">Glass Fiber with Micro-glass Fiber</option>
+              <option value="MCE">MCE</option>
+              <option value="MCE with Micro-glass Fiber">MCE with Micro-glass Fiber</option>
+              <option value="PP">PP</option>
+              <option value="PP with Micro-glass Fiber">PP with Micro-glass Fiber</option>
+            </select></label>
+            <label>Pore size<select id="poreSize" required>
+              <option value="">Select pore size</option>
+              <option value="0.2µm">0.2µm</option>
+              <option value="0.45µm">0.45µm</option>
+              <option value="0.5µm">0.5µm</option>
+              <option value="0.8µm">0.8µm</option>
+              <option value="1µm">1µm</option>
+              <option value="1.5µm">1.5µm</option>
+              <option value="2µm">2µm</option>
+              <option value="5µm">5µm</option>
+              <option value="10µm">10µm</option>
+            </select></label>
+            <label>Sterility<select id="sterilityType">
+              <option value="">Select sterility</option>
+              <option value="Sterile">Sterile</option>
+              <option value="Non-sterile">Non-sterile</option>
+            </select></label>
             <label>Housing<input id="housing" placeholder="Polypropylene"></label>
-            <label>Filter Diameter<input id="filterDiameter" list="filterDiameterOptions" placeholder="25"></label>
+            <label>Filter Diameter<select id="filterDiameter">
+              <option value="">Select diameter</option>
+              <option value="4">4</option>
+              <option value="13">13</option>
+              <option value="25">25</option>
+              <option value="33">33</option>
+            </select></label>
             <label>Burst pressure<input id="burstPressure" placeholder="&gt; 7kg/cm²"></label>
-            <label>Holdup Volume<input id="holdupVolume" list="holdupVolumeOptions" placeholder="&lt; 50µl"></label>
-            <label>Sterilization<input id="sterilizationMethod" list="sterilizationOptions" placeholder="ETO / Gamma"></label>
+            <label>Holdup Volume<select id="holdupVolume">
+              <option value="">Select holdup volume</option>
+              <option value="&lt; 5µl">&lt; 5µl</option>
+              <option value="&lt; 10µl">&lt; 10µl</option>
+              <option value="&lt; 20µl">&lt; 20µl</option>
+              <option value="&lt; 50µl">&lt; 50µl</option>
+              <option value="&lt; 70µl">&lt; 70µl</option>
+              <option value="NA">NA</option>
+            </select></label>
+            <label>Sterilization<select id="sterilizationMethod">
+              <option value="">Select sterilization</option>
+              <option value="ETO">ETO</option>
+              <option value="Gamma">Gamma</option>
+              <option value="ETO / Gamma">ETO / Gamma</option>
+            </select></label>
             <label>Lot prefix<input id="lotPrefix" value="S"></label>
             <label>Lot product code<input id="lotProductCode" required placeholder="55"></label>
             <label>Month codes<input id="lotMonthCodes" value="A,B,C,D,E,F,G,H,I,J,K,L"></label>
             <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
-            <datalist id="productLineOptions">
-              <option value="Nylon Syringe Filters">
-              <option value="Nylon Syringe Filters with Micro-glass Fiber">
-              <option value="High Flow Syringe Filters">
-              <option value="High Flow Syringe Filters with Micro-glass Fiber">
-              <option value="CA Syringe Filters">
-              <option value="CA Syringe Filters with Micro-glass Fiber">
-              <option value="PVDF Syringe Filters">
-              <option value="PVDF Syringe Filters with Micro-glass Fiber">
-              <option value="PES Syringe Filters">
-              <option value="PES Syringe Filters with Micro-glass Fiber">
-              <option value="PTFE Syringe Filters, Hydrophobic">
-              <option value="PTFE Syringe Filters, Hydrophilic">
-              <option value="PTFE Syringe Filters with Micro-glass Fiber">
-              <option value="Glass Fiber Syringe Filters">
-              <option value="Glass Fiber Syringe Filters with Micro-glass Fiber">
-              <option value="MCE Syringe Filters">
-              <option value="MCE Syringe Filters with Micro-glass Fiber">
-              <option value="PP Syringe Filters">
-              <option value="PP Syringe Filters with Micro-glass Fiber">
-            </datalist>
-            <datalist id="membraneOptions">
-              <option value="Nylon">
-              <option value="Nylon with Micro-glass Fiber">
-              <option value="High Flow">
-              <option value="High Flow with Micro-glass Fiber">
-              <option value="CA">
-              <option value="CA with Micro-glass Fiber">
-              <option value="PVDF">
-              <option value="PVDF with Micro-glass Fiber">
-              <option value="PES">
-              <option value="PES with Micro-glass Fiber">
-              <option value="PTFE">
-              <option value="PTFE with Micro-glass Fiber">
-              <option value="Glass Fiber">
-              <option value="Glass Fiber with Micro-glass Fiber">
-              <option value="MCE">
-              <option value="MCE with Micro-glass Fiber">
-              <option value="PP">
-              <option value="PP with Micro-glass Fiber">
-            </datalist>
-            <datalist id="poreSizeOptions">
-              <option value="0.2µm">
-              <option value="0.45µm">
-              <option value="0.5µm">
-              <option value="0.8µm">
-              <option value="1µm">
-              <option value="1.5µm">
-              <option value="2µm">
-              <option value="5µm">
-              <option value="10µm">
-            </datalist>
-            <datalist id="filterDiameterOptions">
-              <option value="4">
-              <option value="13">
-              <option value="25">
-              <option value="33">
-            </datalist>
-            <datalist id="holdupVolumeOptions">
-              <option value="&lt; 5µl">
-              <option value="&lt; 10µl">
-              <option value="&lt; 20µl">
-              <option value="&lt; 50µl">
-              <option value="&lt; 70µl">
-              <option value="NA">
-            </datalist>
-            <datalist id="sterilityOptions">
-              <option value="Sterile">
-              <option value="Non-sterile">
-            </datalist>
-            <datalist id="sterilizationOptions">
-              <option value="ETO">
-              <option value="Gamma">
-              <option value="ETO / Gamma">
-            </datalist>
           </form>
           <div class="panel">
             <div class="panel-head">
@@ -284,8 +301,7 @@
   <template id="labelTemplateNode">
     <div class="om-label">
       <div class="label-logo">
-        <span>OMSONS</span>
-        <small>GERMANY</small>
+        <img src="/assets/logo.png" alt="Omsons Germany">
       </div>
       <div class="label-copy">
         <strong data-field="productName"></strong>

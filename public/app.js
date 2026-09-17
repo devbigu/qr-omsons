@@ -43,8 +43,20 @@ function toast(message) {
 }
 
 function showScreen(id) {
+  const current = $(".screen.active");
+  if (current && current.id === id) return;
+
   $$(".screen").forEach((screen) => screen.classList.toggle("active", screen.id === id));
   $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.screen === id));
+
+  // The entry animation is declarative, so re-trigger it by reflowing the newly shown screen.
+  const next = document.getElementById(id);
+  if (next) {
+    next.style.animation = "none";
+    void next.offsetWidth;
+    next.style.animation = "";
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 let activeDownloadButton = null;
 
@@ -254,22 +266,29 @@ function productPayload() {
   };
 }
 
+function setSelect(id, value) {
+  const el = $(id);
+  el.value = value || "";
+  // legacy records may hold values outside the option list; keep them selectable
+  if (value && el.value !== value) el.add(new Option(value, value, false, true));
+}
+
 function fillProductForm(product) {
   $("#productId").value = product._id || "";
-  $("#productName").value = product.productName || "";
+  setSelect("#productName", product.productName || "");
   $("#catalogueNumber").value = product.catalogueNumber || "";
   $("#productType").value = product.productType || "Syringe filter";
   $("#category").value = product.category || "Membrane filter";
   $("#company").value = product.company || "Omsons Germany";
-  $("#membrane").value = product.membrane || "";
-  $("#poreSize").value = product.poreSize || "";
+  setSelect("#membrane", product.membrane || "");
+  setSelect("#poreSize", product.poreSize || "");
   $("#technicalDetail").value = product.technicalDetail || "";
-  $("#sterilityType").value = product.sterilityType || "Non-sterile";
+  setSelect("#sterilityType", product.sterilityType || "Non-sterile");
   $("#housing").value = product.housing || "Polypropylene";
-  $("#filterDiameter").value = product.filterDiameter || "";
+  setSelect("#filterDiameter", product.filterDiameter || "");
   $("#burstPressure").value = product.burstPressure || "> 7kg/cm²";
-  $("#holdupVolume").value = product.holdupVolume || "";
-  $("#sterilizationMethod").value = product.sterilizationMethod || "";
+  setSelect("#holdupVolume", product.holdupVolume || "");
+  setSelect("#sterilizationMethod", product.sterilizationMethod || "");
   $("#packSize").value = product.packSize || "";
   $("#hsnCode").value = product.hsnCode || "";
   $("#labelTemplate").value = product.labelTemplate || "omsons_sample_v1";
@@ -340,8 +359,7 @@ async function loadProducts(preferredCatalogue = "") {
 }
 
 async function loadDashboard() {
-  const [dashboard, health] = await Promise.all([api("/api/dashboard"), api("/api/health")]);
-  $("#storagePill").textContent = `Storage: ${health.storage}`;
+  const dashboard = await api("/api/dashboard");
   $("#totalProducts").textContent = dashboard.totalProducts;
   $("#totalLabels").textContent = dashboard.totalLabels;
   $("#totalBatches").textContent = dashboard.totalBatches;
@@ -638,6 +656,10 @@ async function boot() {
   const initialLot = lotNumberFromLocation();
   if (initialLot) await openLotViewer(initialLot, "replace");
   else await searchCertificates();
+
+  // Allow deep-linking a tab, e.g. /#screen=generate
+  const requested = new URLSearchParams(window.location.hash.slice(1)).get("screen");
+  if (requested && document.getElementById(requested)) showScreen(requested);
 }
 boot().catch((error) => toast(error.message));
 

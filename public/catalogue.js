@@ -32,7 +32,7 @@ function detail(label, data) {
 function notFound() {
   mount.innerHTML = `
     <section class="catalogue-card catalogue-empty">
-      <div class="catalogue-brand">OMSONS</div>
+      <img class="catalogue-brand" src="https://omsonsnsicom.yolasite.com/" alt="Omsons Germany" onerror="this.onerror=null;this.src='/assets/logo.png'">
       <h1>Catalogue record not found</h1>
       <p>${escapeHtml(certificateId)}</p>
     </section>
@@ -48,7 +48,7 @@ function renderCatalogue(record) {
   mount.innerHTML = `
     <section class="catalogue-hero">
       <div>
-        <div class="catalogue-brand">OMSONS</div>
+        <img class="catalogue-brand" src="https://omsonsnsicom.yolasite.com/" alt="Omsons Germany" onerror="this.onerror=null;this.src='/assets/logo.png'">
         <p class="catalogue-kicker">Verified product catalogue</p>
         <h1>${escapeHtml(value(product.productName, record.productName || "Product"))}</h1>
         <p class="catalogue-subtitle">${escapeHtml(value(product.productType))} ${product.category ? `- ${escapeHtml(product.category)}` : ""}</p>

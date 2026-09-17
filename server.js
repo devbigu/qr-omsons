@@ -43,7 +43,7 @@ function resolvePath(value, fallback) {
 }
 
 const app = express();
-const port = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 3003);
 const dataDir = resolvePath(process.env.DATA_DIR, path.join(__dirname, "data"));
 const dataFile = path.join(dataDir, "store.json");
 const certificateTemplateFile = resolvePath(
@@ -117,6 +117,11 @@ function isPublicRequest(req) {
     return true;
   }
   if (req.method === "POST" && req.path === "/api/login") return true;
+  // Branding and the public pages' stylesheet: the login, COA, and catalogue pages are
+  // reachable signed-out, so the assets they render must be too.
+  if (req.method === "GET" && /^\/(assets\/[\w.-]+\.(png|jpe?g|svg|webp)|styles\.css|catalogue\.js|coa\.js)$/i.test(req.path)) {
+    return true;
+  }
   if (
     req.method === "GET"
     && /^\/api\/certificates\/[^/]+\/image\.(webp|jpe?g)$/i.test(req.path)
@@ -842,13 +847,7 @@ function certificateDeliveryUrl(secureUrl, format) {
     .replace(/\.svg(\?.*)?$/i, `.${normalizedFormat}$1`);
 }
 
-async function ensureCertificateImage(certificate) {
-  if (certificate.certificateImageCloudinaryUrl && certificate.certificateImagePublicId) {
-    return {
-      secureUrl: certificate.certificateImageCloudinaryUrl,
-      publicId: certificate.certificateImagePublicId
-    };
-  }
+async function uploadCertificateImage(certificate) {
   if (!hasCloudinaryConfig()) throw new Error("Cloudinary is required for certificate images.");
 
   const safeId = safeCloudinaryId(certificate.certificateId);
@@ -859,15 +858,31 @@ async function ensureCertificateImage(certificate) {
     fileName: `${safeId}.svg`,
     contentType: "image/svg+xml"
   });
+  return {
+    secureUrl: uploaded.secure_url,
+    publicId: uploaded.public_id,
+    webpUrl: certificateDeliveryUrl(uploaded.secure_url, "webp")
+  };
+}
+
+async function ensureCertificateImage(certificate) {
+  if (certificate.certificateImageCloudinaryUrl && certificate.certificateImagePublicId) {
+    return {
+      secureUrl: certificate.certificateImageCloudinaryUrl,
+      publicId: certificate.certificateImagePublicId
+    };
+  }
+
+  const uploaded = await uploadCertificateImage(certificate);
   const imagePatch = {
-    certificateImageCloudinaryUrl: uploaded.secure_url,
-    certificateImagePublicId: uploaded.public_id
+    certificateImageCloudinaryUrl: uploaded.secureUrl,
+    certificateImagePublicId: uploaded.publicId
   };
   await store.update("certificates", certificate._id, imagePatch);
   const label = await store.findOne("qr_labels", { certificateId: certificate.certificateId });
   if (label) await store.update("qr_labels", label._id, imagePatch);
 
-  return { secureUrl: uploaded.secure_url, publicId: uploaded.public_id };
+  return uploaded;
 }
 
 async function renderCertificatePdf(certificate) {
@@ -1118,7 +1133,36 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
   const labels = [];
   for (const serialNumber of serials) {
     const certificateId = buildCertificateId(product.catalogueNumber, lotNumber, serialNumber);
-    const qrUrl = `${publicBaseUrl(req)}/api/certificates/${encodeURIComponent(certificateId)}/image.webp`;
+    const certificateData = {
+      productType: product.productType,
+      category: product.category,
+      gtap: product.technicalDetail,
+      membrane: product.membrane,
+      poreSize: printablePore(product),
+      sterilityType: product.sterilityType,
+      housing: product.housing || "",
+      filterDiameter: product.filterDiameter || "",
+      burstPressure: product.burstPressure || "",
+      holdupVolume: product.holdupVolume || "",
+      sterilizationMethod: product.sterilizationMethod || "",
+      packSize: product.packSize,
+      hsnCode: product.hsnCode,
+      manufacturingDate: lot.manufacturingDate || "",
+      expiryDate: lot.expiryDate || "",
+      lotBreakdown,
+      certificateTemplate: product.certificateTemplate,
+      company: product.company || "Omsons Germany"
+    };
+
+    // Certificate image first: the QR encodes its Cloudinary WebP URL, nothing else.
+    const certificateImage = await uploadCertificateImage({
+      certificateId,
+      catalogueNumber: product.catalogueNumber,
+      productName: product.productName,
+      lotNumber,
+      certificateData
+    });
+    const qrUrl = certificateImage.webpUrl;
     const qrAssets = await createQrAssets(qrUrl, certificateId);
     const label = await store.insert("qr_labels", {
       batchId: batch.batchId,
@@ -1141,6 +1185,8 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
       qrDxfUrl: qrAssets.qrDxfUrl,
       qrDxfPublicId: qrAssets.qrDxfPublicId,
       qrDxfFormat: qrAssets.qrDxfFormat,
+      certificateImageCloudinaryUrl: certificateImage.secureUrl,
+      certificateImagePublicId: certificateImage.publicId,
       labelPdfPath: "",
       certificatePdfPath: "",
       status: "valid",
@@ -1156,28 +1202,11 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
       productName: product.productName,
       lotNumber,
       serialNumber,
-      certificateData: {
-        productType: product.productType,
-        category: product.category,
-        gtap: product.technicalDetail,
-        membrane: product.membrane,
-        poreSize: printablePore(product),
-        sterilityType: product.sterilityType,
-        housing: product.housing || "",
-        filterDiameter: product.filterDiameter || "",
-        burstPressure: product.burstPressure || "",
-        holdupVolume: product.holdupVolume || "",
-        sterilizationMethod: product.sterilizationMethod || "",
-        packSize: product.packSize,
-        hsnCode: product.hsnCode,
-        manufacturingDate: lot.manufacturingDate || "",
-        expiryDate: lot.expiryDate || "",
-        lotBreakdown,
-        certificateTemplate: product.certificateTemplate,
-        company: product.company || "Omsons Germany"
-      },
+      certificateData,
       certificatePdfPath: "",
       qrDxfUrl: qrAssets.qrDxfUrl,
+      certificateImageCloudinaryUrl: certificateImage.secureUrl,
+      certificateImagePublicId: certificateImage.publicId,
       verificationUrl: qrUrl,
       status: "valid",
       createdAt: now()
@@ -1535,6 +1564,7 @@ module.exports = app;
 module.exports.buildQrDxf = buildQrDxf;
 module.exports.buildCertificateSvg = buildCertificateSvg;
 module.exports.certificateDeliveryUrl = certificateDeliveryUrl;
+module.exports.createQrAssets = createQrAssets;
 module.exports.initialiseStore = initialiseStore;
 module.exports.startServer = startServer;
 

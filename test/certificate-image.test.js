@@ -57,3 +57,20 @@ test("legacy COA links redirect directly to the WebP certificate", async (t) => 
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("location"), "/api/certificates/CERT-TEST-1/image.webp");
 });
+
+test("QR encodes only the Cloudinary WebP certificate link", async () => {
+  const secureUrl =
+    "https://res.cloudinary.com/rfpc3br5/image/upload/v1782986293/omsons-qr-labels/certificates/CERT-OM553-S5528F-101.svg";
+  const webpUrl = app.certificateDeliveryUrl(secureUrl, "webp");
+
+  assert.equal(
+    webpUrl,
+    "https://res.cloudinary.com/rfpc3br5/image/upload/f_webp,q_auto/v1782986293/omsons-qr-labels/certificates/CERT-OM553-S5528F-101.webp"
+  );
+
+  const dxf = app.buildQrDxf({ certificateId: "CERT-OM553-S5528F-101", qrUrl: webpUrl });
+  assert.ok(dxf.includes(webpUrl));
+
+  // Payload is the bare link, so the symbol stays small enough to print on an object.
+  assert.ok(webpUrl.length < 180);
+});
