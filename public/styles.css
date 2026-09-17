@@ -1772,3 +1772,14 @@ input.combo::-webkit-calendar-picker-indicator { opacity: 0; cursor: pointer; }
 @media (max-width: 860px) {
   .sidebar-toggle { display: none; }
 }
+
+/* Bulk select / download / delete */
+.bulk-select { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.bulk-select input,
+.select-cell input { width: 16px; height: 16px; min-height: 0; padding: 0; cursor: pointer; }
+.select-cell { width: 36px; }
+
+/* Accounts: signed-in badge and user rights form */
+.account-badge { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.permission-grid { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--line-soft); border-radius: var(--radius-sm); }
+.permission-grid legend { padding: 0 6px; color: var(--ink-2); font-size: 12.5px; font-weight: 650; }

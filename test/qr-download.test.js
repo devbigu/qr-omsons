@@ -173,6 +173,13 @@ test("QR routes provide PNG, JPG, Cloudinary redirects, and streaming ZIP export
   assert.equal(lotZip.includes(Buffer.from("OM260-020_S5527F_2.jpg")), true);
   assert.equal(lotZip.includes(Buffer.from("OM260-020_S5527F_3.jpg")), true);
 
+  const idsZipResponse = await authFetch(`${baseUrl}/api/qr-labels/zip?ids=label_1,label_file`);
+  const idsZip = Buffer.from(await idsZipResponse.arrayBuffer());
+  assert.equal(idsZipResponse.status, 200);
+  assert.equal(zipEntryCount(idsZip), 2);
+  assert.equal(idsZip.includes(Buffer.from("OM260-020_S5527F_1.png")), true);
+  assert.equal(idsZip.includes(Buffer.from("OM260-020_S5527F_2.png")), false);
+
   const dxfResponse = await authFetch(`${baseUrl}/api/certificates/CERT-LOCAL-1/dxf`);
   assert.equal(dxfResponse.status, 200);
   assert.equal(

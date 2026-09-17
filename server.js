@@ -1,8 +1,7 @@
 const archiver = require("archiver");
 const bcrypt = require("bcryptjs");
-const MongoSessionStore = require("connect-mongo");
 const express = require("express");
-const session = require("express-session");
+const jwt = require("jsonwebtoken");
 const QRCode = require("qrcode");
 const sharp = require("sharp");
 const { MongoClient, ObjectId } = require("mongodb");
@@ -69,43 +68,87 @@ const sessionTtlDays = Number.isFinite(configuredSessionTtlDays) && configuredSe
   ? configuredSessionTtlDays
   : 7;
 const sessionTtlMs = sessionTtlDays * 24 * 60 * 60 * 1000;
-const sessionCookieName = "omsons.sid";
-const configuredSessionSecret = process.env.SESSION_SECRET || "";
+const authCookieName = "omsons.token";
+const configuredJwtSecret = process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
+const jwtSecret = configuredJwtSecret || "local-development-only-change-me";
 const adminUsername = String(process.env.ADMIN_USERNAME || "").trim();
 const adminPasswordHash = String(process.env.ADMIN_PASSWORD_HASH || "");
 
-if (isProduction && (!configuredSessionSecret || !adminUsername || !adminPasswordHash)) {
-  throw new Error("ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and SESSION_SECRET are required in production.");
+if (isProduction && (!configuredJwtSecret || !adminUsername || !adminPasswordHash)) {
+  throw new Error("ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and JWT_SECRET are required in production.");
 }
 
-const sessionStore = process.env.MONGODB_URI && process.env.STORAGE_MODE !== "json"
-  ? MongoSessionStore.create({
-      mongoUrl: process.env.MONGODB_URI,
-      dbName: process.env.MONGODB_DB || "omsons_qr",
-      collectionName: "sessions",
-      ttl: Math.ceil(sessionTtlMs / 1000)
-    })
-  : undefined;
+// Rights an admin can grant a user. The .env admin always has all of them plus user management.
+const permissionKeys = ["product:add", "product:edit", "product:delete", "label:add", "label:delete"];
+const adminAccount = { id: "admin", username: adminUsername, role: "admin", permissions: permissionKeys };
+
+// Write routes that a non-admin may call, and the rights that unlock them (any one is enough).
+// Every other non-GET /api route is admin-only.
+const routePermissions = [
+  ["POST", /^\/api\/products(\/bulk)?$/, ["product:add"]],
+  ["PUT", /^\/api\/products\/[^/]+$/, ["product:edit"]],
+  ["DELETE", /^\/api\/products\/[^/]+$/, ["product:delete"]],
+  ["POST", /^\/api\/custom-options$/, ["product:add", "product:edit"]],
+  ["POST", /^\/api\/(qr-batches\/generate|lots)$/, ["label:add"]],
+  ["DELETE", /^\/api\/(qr-labels|qr-batches)\/[^/]+$/, ["label:delete"]]
+];
+
+const authCookieOptions = { httpOnly: true, sameSite: "lax", secure: isProduction, path: "/" };
 
 app.disable("x-powered-by");
 if (envFlag("TRUST_PROXY", process.env.NODE_ENV === "production")) {
   app.set("trust proxy", 1);
 }
 app.use(express.json({ limit: "4mb" }));
-app.use(session({
-  name: sessionCookieName,
-  secret: configuredSessionSecret || "local-development-only-change-me",
-  store: sessionStore,
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: isProduction,
-    maxAge: sessionTtlMs
+
+function readCookie(req, name) {
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const index = part.indexOf("=");
+    if (index > 0 && part.slice(0, index).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(index + 1).trim());
+      } catch {
+        return "";
+      }
+    }
   }
-}));
+  return "";
+}
+
+function setAuthCookie(res, subject) {
+  const token = jwt.sign({ sub: subject, jti: crypto.randomUUID() }, jwtSecret, {
+    expiresIn: Math.floor(sessionTtlMs / 1000)
+  });
+  res.cookie(authCookieName, token, { ...authCookieOptions, maxAge: sessionTtlMs });
+}
+
+function verifiedToken(req) {
+  const token = readCookie(req, authCookieName);
+  if (!token) return null;
+  try {
+    return jwt.verify(token, jwtSecret);
+  } catch {
+    return null;
+  }
+}
+
+// Resolves the signed-in account on every request, so edited rights, deactivation, deletion
+// and logout take effect immediately rather than when the token expires.
+async function currentAccount(req) {
+  const payload = verifiedToken(req);
+  if (!payload) return null;
+  await initialiseStore();
+  if (payload.jti && await store.findOne("revoked_tokens", { jti: payload.jti })) return null;
+  if (payload.sub === "admin") return adminUsername ? adminAccount : null;
+  const user = await store.findOne("users", { _id: payload.sub });
+  if (!user || user.active === false) return null;
+  return {
+    id: String(user._id),
+    username: user.username,
+    role: "user",
+    permissions: (user.permissions || []).filter((permission) => permissionKeys.includes(permission))
+  };
+}
 
 function safeNextPath(value) {
   const candidate = String(value || "");
@@ -131,69 +174,80 @@ function isPublicRequest(req) {
   return req.method === "GET" && /^\/(coa|catalogue)\/[^/]+$/i.test(req.path);
 }
 
-function requireAuth(req, res, next) {
-  if (isPublicRequest(req) || req.session?.authenticated === true) return next();
+const requireAuth = asyncRoute(async (req, res, next) => {
+  if (isPublicRequest(req)) return next();
+  req.account = await currentAccount(req);
+  if (req.account) return next();
   if (req.path.startsWith("/api/")) {
     return res.status(401).json({ error: "Not authenticated" });
   }
   const nextPath = safeNextPath(req.originalUrl);
   return res.redirect(302, `/login?next=${encodeURIComponent(nextPath)}`);
+});
+
+function requirePermission(req, res, next) {
+  if (["GET", "HEAD"].includes(req.method) || !req.path.startsWith("/api/") || req.path === "/api/logout") {
+    return next();
+  }
+  if (req.account?.role === "admin") return next();
+  const rule = routePermissions.find(([method, pattern]) => method === req.method && pattern.test(req.path));
+  if (rule && rule[2].some((permission) => req.account?.permissions.includes(permission))) return next();
+  return res.status(403).json({ error: "You do not have permission for this action." });
 }
 
-app.get("/login", (req, res) => {
-  if (req.session?.authenticated === true) {
+function adminOnly(req, res, next) {
+  if (req.account?.role === "admin") return next();
+  return res.status(403).json({ error: "Only the admin can manage users." });
+}
+
+app.get("/login", asyncRoute(async (req, res) => {
+  if (verifiedToken(req) && await currentAccount(req).catch(() => null)) {
     return res.redirect(302, safeNextPath(req.query.next));
   }
   return res.sendFile(path.join(__dirname, "public", "login.html"));
-});
+}));
 
 app.post("/api/login", asyncRoute(async (req, res) => {
   const username = String(req.body?.username || "").trim();
   const password = String(req.body?.password || "");
-  const usernameMatches = Boolean(adminUsername)
-    && username.toLocaleLowerCase() === adminUsername.toLocaleLowerCase();
-  let passwordMatches = false;
+  const safeCompare = (hash) => bcrypt.compare(password, hash).catch(() => false);
 
-  if (adminPasswordHash) {
-    try {
-      passwordMatches = await bcrypt.compare(password, adminPasswordHash);
-    } catch {
-      passwordMatches = false;
-    }
+  let subject = "";
+  if (adminUsername && adminPasswordHash
+    && username.toLocaleLowerCase() === adminUsername.toLocaleLowerCase()) {
+    if (await safeCompare(adminPasswordHash)) subject = "admin";
+  } else if (username) {
+    await initialiseStore();
+    const user = await store.findOne("users", { usernameKey: username.toLocaleLowerCase() });
+    if (user && user.active !== false && await safeCompare(user.passwordHash)) subject = String(user._id);
   }
 
-  if (!usernameMatches || !passwordMatches) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
-
-  await new Promise((resolve, reject) => {
-    req.session.regenerate((error) => (error ? reject(error) : resolve()));
-  });
-  req.session.authenticated = true;
-  await new Promise((resolve, reject) => {
-    req.session.save((error) => (error ? reject(error) : resolve()));
-  });
+  if (!subject) return res.status(401).json({ error: "Invalid credentials" });
+  setAuthCookie(res, subject);
   return res.json({ ok: true });
 }));
 
-app.get("/api/auth/status", (req, res) => {
-  res.json({ authenticated: req.session?.authenticated === true });
-});
+app.get("/api/auth/status", asyncRoute(async (req, res) => {
+  const account = verifiedToken(req) ? await currentAccount(req).catch(() => null) : null;
+  res.json({ authenticated: Boolean(account) });
+}));
 
 app.use(requireAuth);
+app.use(requirePermission);
 
-app.post("/api/logout", (req, res, next) => {
-  req.session.destroy((error) => {
-    if (error) return next(error);
-    res.clearCookie(sessionCookieName, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProduction,
-      path: "/"
+app.post("/api/logout", asyncRoute(async (req, res) => {
+  const payload = verifiedToken(req);
+  // ponytail: revoked tokens are never pruned; delete rows whose expiresAt has passed if this grows.
+  if (payload?.jti) {
+    await store.insert("revoked_tokens", {
+      jti: payload.jti,
+      expiresAt: new Date(payload.exp * 1000).toISOString(),
+      createdAt: now()
     });
-    return res.json({ ok: true });
-  });
-});
+  }
+  res.clearCookie(authCookieName, authCookieOptions);
+  return res.json({ ok: true });
+}));
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -819,10 +873,12 @@ function filterQrLabels(labels, query = {}) {
   const catalogueNumber = normaliseCatalogue(query.catalogueNumber || "");
   const lotNumber = query.lotNumber?.toString().trim().toUpperCase();
   const batchId = query.batchId?.toString().trim();
+  const ids = query.ids ? new Set(query.ids.toString().split(",").map((id) => id.trim()).filter(Boolean)) : null;
   return labels.filter((label) =>
     (!catalogueNumber || label.catalogueNumber === catalogueNumber) &&
     (!lotNumber || label.lotNumber === lotNumber) &&
-    (!batchId || label.batchId === batchId));
+    (!batchId || label.batchId === batchId) &&
+    (!ids || ids.has(String(label._id))));
 }
 
 const certificateTemplateCache = new Map();
@@ -1024,6 +1080,84 @@ app.use("/api", asyncRoute(async (req, res, next) => {
   }
 }));
 
+app.get("/api/me", (req, res) => {
+  const { username, role, permissions } = req.account;
+  res.json({ username, role, permissions });
+});
+
+function publicUser(user) {
+  return {
+    _id: user._id,
+    username: user.username,
+    permissions: user.permissions || [],
+    active: user.active !== false,
+    createdAt: user.createdAt
+  };
+}
+
+function cleanPermissions(list) {
+  return [...new Set((Array.isArray(list) ? list : []).filter((permission) => permissionKeys.includes(permission)))];
+}
+
+async function validateUsername(username, currentId = "") {
+  if (username.length < 3 || username.length > 80) return "User ID must be 3-80 characters.";
+  const key = username.toLocaleLowerCase();
+  if (adminUsername && key === adminUsername.toLocaleLowerCase()) return "That user ID is reserved.";
+  const existing = await store.findOne("users", { usernameKey: key });
+  if (existing && String(existing._id) !== String(currentId)) return "That user ID already exists.";
+  return "";
+}
+
+app.get("/api/users", adminOnly, asyncRoute(async (req, res) => {
+  const users = await store.list("users");
+  res.json(users.map(publicUser));
+}));
+
+app.post("/api/users", adminOnly, asyncRoute(async (req, res) => {
+  const username = String(req.body?.username || "").trim();
+  const password = String(req.body?.password || "");
+  const usernameError = await validateUsername(username);
+  if (usernameError) return res.status(400).json({ error: usernameError });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+  const saved = await store.insert("users", {
+    username,
+    usernameKey: username.toLocaleLowerCase(),
+    passwordHash: await bcrypt.hash(password, 10),
+    permissions: cleanPermissions(req.body?.permissions),
+    active: req.body?.active !== false,
+    createdAt: now()
+  });
+  res.status(201).json(publicUser(saved));
+}));
+
+app.put("/api/users/:id", adminOnly, asyncRoute(async (req, res) => {
+  const user = await store.findOne("users", { _id: req.params.id });
+  if (!user) return res.status(404).json({ error: "User not found." });
+  const username = String(req.body?.username ?? user.username).trim();
+  const usernameError = await validateUsername(username, user._id);
+  if (usernameError) return res.status(400).json({ error: usernameError });
+  const patch = {
+    username,
+    usernameKey: username.toLocaleLowerCase(),
+    permissions: req.body?.permissions === undefined ? user.permissions : cleanPermissions(req.body.permissions),
+    active: req.body?.active === undefined ? user.active !== false : req.body.active !== false
+  };
+  const password = String(req.body?.password || "");
+  if (password) {
+    if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+    patch.passwordHash = await bcrypt.hash(password, 10);
+  }
+  const updated = await store.update("users", req.params.id, patch);
+  res.json(publicUser(updated));
+}));
+
+app.delete("/api/users/:id", adminOnly, asyncRoute(async (req, res) => {
+  const user = await store.findOne("users", { _id: req.params.id });
+  if (!user) return res.status(404).json({ error: "User not found." });
+  await store.delete("users", user._id);
+  res.status(204).send();
+}));
+
 app.get("/api/dashboard", asyncRoute(async (req, res) => {
   const [products, batches, labels, certificates] = await Promise.all([
     store.list("products"),
@@ -1046,6 +1180,31 @@ app.post("/api/products", asyncRoute(async (req, res) => {
   if (existing) return res.status(409).json({ error: "Catalogue number already exists." });
   const saved = await store.insert("products", { ...product, createdAt: now(), updatedAt: now() });
   res.status(201).json(saved);
+}));
+
+// Spreadsheet import. Each row is added on its own; duplicates and invalid rows are reported, not fatal.
+app.post("/api/products/bulk", asyncRoute(async (req, res) => {
+  const rows = Array.isArray(req.body?.products) ? req.body.products : [];
+  const added = [];
+  const skipped = [];
+  for (const row of rows) {
+    try {
+      const product = cleanProduct(row);
+      if (await findProductByCatalogue(product.catalogueNumber)) throw new Error("Catalogue number already exists.");
+      // Sheet's own catalogueNumber when "catalogueNumber Version" replaced it; kept as a hidden fallback.
+      const originalCatalogueNumber = String(row.originalCatalogueNumber ?? "").trim();
+      await store.insert("products", {
+        ...product,
+        ...(originalCatalogueNumber && { originalCatalogueNumber }),
+        createdAt: now(),
+        updatedAt: now()
+      });
+      added.push(product.catalogueNumber);
+    } catch (error) {
+      skipped.push({ catalogueNumber: String(row?.catalogueNumber ?? ""), error: error.message });
+    }
+  }
+  res.json({ added, skipped });
 }));
 
 app.get("/api/products", asyncRoute(async (req, res) => {
@@ -1351,10 +1510,11 @@ app.get("/api/qr-labels", asyncRoute(async (req, res) => {
 app.get("/api/qr-labels/zip", asyncRoute(async (req, res) => {
   const lotNumber = req.query.lotNumber?.toString().trim().toUpperCase();
   const batchId = req.query.batchId?.toString().trim();
+  const ids = req.query.ids?.toString().trim();
   const format = req.query.format?.toString().trim().toLowerCase() || "png";
 
-  if (!lotNumber && !batchId) {
-    return res.status(400).json({ error: "Provide lotNumber or batchId." });
+  if (!lotNumber && !batchId && !ids) {
+    return res.status(400).json({ error: "Provide lotNumber, batchId, or ids." });
   }
   if (!["png", "jpg"].includes(format)) {
     return res.status(400).json({ error: "Use png or jpg format." });
@@ -1377,7 +1537,7 @@ app.get("/api/qr-labels/zip", asyncRoute(async (req, res) => {
   const endSerial = serials.length ? Math.max(...serials) : labels.at(-1).serialNumber;
   const zipName = batchId
     ? `${cataloguePart}_${lotPart}_${safeAssetFilePart(startSerial)}-${safeAssetFilePart(endSerial)}.zip`
-    : `${cataloguePart}_${lotPart}_all.zip`;
+    : `${cataloguePart}_${lotPart}_${ids ? "selected" : "all"}.zip`;
 
   res.set("Content-Type", "application/zip");
   res.set("Content-Disposition", `attachment; filename="${zipName}"`);

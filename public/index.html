@@ -24,7 +24,7 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 7.3 12 12 3.5 7.3"/><path d="M12 12v9.5"/><path d="m3.5 7.3 8.5-4.8 8.5 4.8v9.4L12 21.5l-8.5-4.8Z"/></svg></span>
           <span class="nav-label">Products</span>
         </button>
-        <button class="nav-button" data-screen="generate">
+        <button class="nav-button" data-screen="generate" data-perm="label:add">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20.5 14v.01M14 20.5v.01M20.5 20.5v.01"/></svg></span>
           <span class="nav-label">Generate</span>
         </button>
@@ -35,6 +35,10 @@
         <button class="nav-button" data-screen="certificates">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.8H6.5A1.5 1.5 0 0 0 5 4.3v15.4a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V7.8Z"/><path d="M14 2.8v5h5"/><path d="M8.8 13.2h6.4M8.8 17h4.2"/></svg></span>
           <span class="nav-label">COA</span>
+        </button>
+        <button class="nav-button" data-screen="users" data-perm="admin" hidden>
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.2A6.5 6.5 0 0 1 21.5 20"/></svg></span>
+          <span class="nav-label">Users</span>
         </button>
       </nav>
       <div class="sidebar-foot">Omsons QR Labels</div>
@@ -47,6 +51,7 @@
           <h2>Omsons QR Label Generator</h1>
         </div>
         <div class="topbar-actions">
+          <span class="account-badge" id="accountBadge"></span>
           <button class="secondary compact" id="logoutButton" type="button">Logout</button>
         </div>
       </header>
@@ -84,7 +89,9 @@
             <h2>Product Master</h2>
             <span class="muted" id="productCount"></span>
             <button class="secondary" type="button" id="clearProductFilters">Clear filters</button>
-            <button type="button" id="addProduct">+ Add Product</button>
+            <button class="secondary" type="button" id="importProductsButton" data-perm="product:add">Import Excel / CSV</button>
+            <input type="file" id="importProducts" accept=".xlsx,.xls,.csv" hidden>
+            <button type="button" id="addProduct" data-perm="product:add">+ Add Product</button>
           </div>
           <div class="table-wrap product-table-wrap">
             <table>
@@ -193,7 +200,8 @@
               <option value="ETO / Gamma"></option>
             </datalist></label>
             <label class="checkbox-row"><input id="isActive" type="checkbox" checked> Active product</label>
-            <button class="wide" type="submit">Save Product</button>
+            <button class="wide" type="submit" data-perm="product:add product:edit">Save Product</button>
+            <button class="danger wide" type="button" id="deleteProduct" hidden>Delete Product</button>
           </form>
           <div class="panel certificate-preview-panel">
             <div class="panel-head">
@@ -247,6 +255,9 @@
           <div class="panel-head">
             <h2>Label Preview</h2>
             <div class="button-row">
+              <label class="bulk-select"><input type="checkbox" data-select-all="#labelSheet"> Select all</label>
+              <button class="secondary" type="button" data-bulk-download="#labelSheet" disabled>Download selected</button>
+              <button class="danger" type="button" data-bulk-delete="#labelSheet" data-perm="label:delete" disabled>Delete selected</button>
               <button class="secondary" id="printLabels">Print / Save PDF</button>
               <button class="secondary" id="downloadBatchZip" type="button" hidden>Download All (.zip)</button>
             </div>
@@ -281,6 +292,8 @@
               <input id="certLot" placeholder="Lot number">
               <button id="searchCertificates">Search</button>
               <button class="secondary" id="downloadLotZip" type="button" hidden>Download All (.zip)</button>
+              <button class="secondary" type="button" data-bulk-download="#certificateRows" disabled>Download selected</button>
+              <button class="danger" type="button" data-bulk-delete="#certificateRows" data-perm="label:delete" disabled>Delete selected</button>
             </div>
           </div>
           <p class="lot-view-note" id="lotViewerNote" hidden>
@@ -290,6 +303,7 @@
             <table>
               <thead>
                 <tr>
+                  <th class="select-cell"><input type="checkbox" data-select-all="#certificateRows" aria-label="Select all certificates"></th>
                   <th>Certificate</th>
                   <th>Product</th>
                   <th>Lot</th>
@@ -300,6 +314,42 @@
               </thead>
               <tbody id="certificateRows"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+      <section class="screen" id="users">
+        <div class="split-layout">
+          <form class="panel form-grid" id="userForm" autocomplete="off">
+            <div class="panel-head">
+              <h2 id="userFormTitle">New User</h2>
+              <button class="secondary" type="button" id="resetUser">Clear</button>
+            </div>
+            <input type="hidden" id="userId">
+            <label class="wide">User ID<input id="userUsername" required minlength="3" maxlength="80" autocomplete="off"></label>
+            <label class="wide">Password<input id="userPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
+            <fieldset class="wide permission-grid" id="userPermissions">
+              <legend>Rights</legend>
+            </fieldset>
+            <label class="checkbox-row"><input id="userActive" type="checkbox" checked> Active user</label>
+            <button class="wide" type="submit">Save User</button>
+          </form>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Users</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>Rights</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="userRows"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>

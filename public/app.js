@@ -1,4 +1,5 @@
 const state = {
+  me: null,
   products: [],
   currentProduct: null,
   generatedLabels: [],
@@ -20,7 +21,12 @@ async function api(path, options = {}) {
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`Request failed (${response.status} ${response.statusText}). Restart the server if it was just updated.`);
+  }
   if (!response.ok) throw new Error(data?.error || "Request failed.");
   return data;
 }
@@ -40,6 +46,27 @@ function html(value) {
 
 function toast(message) {
   alert(message);
+}
+
+// Mirrors the server's rights; the server still enforces them on every write.
+const permissionLabels = {
+  "product:add": "Add products",
+  "product:edit": "Edit products",
+  "product:delete": "Delete products",
+  "label:add": "Generate labels & certificates",
+  "label:delete": "Delete labels & certificates"
+};
+
+function can(...permissions) {
+  if (state.me?.role === "admin") return true;
+  return permissions.some((permission) => state.me?.permissions?.includes(permission));
+}
+
+function applyPermissions() {
+  $$("[data-perm]").forEach((element) => {
+    element.hidden = !can(...element.dataset.perm.split(" "));
+  });
+  $("#accountBadge").textContent = state.me ? `${state.me.username} (${state.me.role})` : "";
 }
 
 function showScreen(id) {
@@ -244,16 +271,56 @@ function renderLabels(labels) {
     card.append(holder.firstElementChild);
     card.insertAdjacentHTML("beforeend", `
       <div class="label-actions">
-        <span>${html(label.certificateId)}</span>
+        <label class="bulk-select"><input type="checkbox" data-select-id="${html(label._id)}" aria-label="Select ${html(label.certificateId)}"> ${html(label.certificateId)}</label>
         <div class="label-action-controls">
           <button class="lot-link" type="button" data-view-lot="${html(label.lotNumber)}">Lot ${html(label.lotNumber)}</button>
           ${downloadMenuButton(label)}
-          <button class="danger compact" type="button" data-delete-label="${html(label._id)}" data-certificate-id="${html(label.certificateId)}">Delete</button>
+          ${can("label:delete") ? `<button class="danger compact" type="button" data-delete-label="${html(label._id)}" data-certificate-id="${html(label.certificateId)}">Delete</button>` : ""}
         </div>
       </div>
     `);
     sheet.append(card);
   });
+  updateBulkButtons("#labelSheet");
+}
+
+// Bulk actions work on checked [data-select-id] boxes (QR label ids) inside a scope element.
+function selectedIds(scope) {
+  return $$(`${scope} [data-select-id]:checked`).map((input) => input.dataset.selectId).filter(Boolean);
+}
+
+function updateBulkButtons(scope) {
+  const count = selectedIds(scope).length;
+  const total = $$(`${scope} [data-select-id]`).length;
+  $$(`[data-bulk-download="${scope}"]`).forEach((button) => {
+    button.disabled = !count;
+    button.textContent = count ? `Download selected (${count})` : "Download selected";
+  });
+  $$(`[data-bulk-delete="${scope}"]`).forEach((button) => {
+    button.disabled = !count;
+    button.textContent = count ? `Delete selected (${count})` : "Delete selected";
+  });
+  $$(`[data-select-all="${scope}"]`).forEach((input) => {
+    input.checked = Boolean(total) && count === total;
+    input.indeterminate = count > 0 && count < total;
+  });
+}
+
+async function deleteSelected(scope) {
+  const ids = selectedIds(scope);
+  if (!ids.length || !confirm(`Delete ${ids.length} selected label(s)? This removes the labels and their COA records.`)) return;
+  // ponytail: one DELETE per label, sequential; add a bulk endpoint if hundreds get deleted at once.
+  let failed = 0;
+  for (const id of ids) {
+    await api(`/api/qr-labels/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => { failed += 1; });
+  }
+  const removed = new Set(ids);
+  state.generatedLabels = state.generatedLabels.filter((label) => !removed.has(String(label._id)));
+  renderLabels(state.generatedLabels);
+  if (state.generatedLabels[0]) fillLabel($("#singleLabelPreview"), state.generatedLabels[0]);
+  else previewFromForm();
+  await Promise.all([loadDashboard(), searchCertificates(), loadBatches()]);
+  toast(failed ? `Deleted ${ids.length - failed}, ${failed} failed.` : `Deleted ${ids.length} label(s).`);
 }
 
 function renderProductSummary(product) {
@@ -315,6 +382,7 @@ function fillProductForm(product) {
   $("#certificateTemplate").value = product.certificateTemplate || "standard_coa_v1";
   state.editingLotRule = product.lotRule;
   $("#isActive").checked = product.isActive !== false;
+  $("#deleteProduct").hidden = !product._id || !can("product:delete");
   refreshProductPreview();
 }
 
@@ -340,6 +408,53 @@ function renderProductTable() {
       <td><span class="${product.isActive === false ? "status-bad" : "status-valid"}">${product.isActive === false ? "inactive" : "active"}</span></td>
     </tr>
   `).join("") || `<tr><td colspan="${productColumns.length + 1}">No products found.</td></tr>`;
+}
+
+// Spreadsheet headers match product fields by name, ignoring case, spaces and punctuation.
+const importKey = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const importFields = new Map([...productColumns, "catalogueNumberVersion"].map((key) => [importKey(key), key]));
+
+function loadSheetJs() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("Could not load the spreadsheet reader. Check the internet connection."));
+    document.head.append(script);
+  });
+}
+
+function productsFromSheet(rows) {
+  // The template has title rows above the headers, so start at the first row naming catalogueNumber.
+  const headerIndex = rows.findIndex((row) => row.some((cell) => importKey(cell) === "cataloguenumber"));
+  if (headerIndex < 0) throw new Error("No catalogueNumber column found in the file.");
+  const fields = rows[headerIndex].map((cell) => importFields.get(importKey(cell)));
+  return rows.slice(headerIndex + 1).map((row) => {
+    const record = {};
+    fields.forEach((field, index) => { if (field) record[field] = String(row[index] ?? "").trim(); });
+    // "catalogueNumber Version" becomes the catalogue number; the sheet's own one is kept hidden as a fallback.
+    const { catalogueNumberVersion, ...product } = record;
+    if (catalogueNumberVersion) {
+      product.originalCatalogueNumber = product.catalogueNumber || "";
+      product.catalogueNumber = catalogueNumberVersion;
+    }
+    return product;
+  }).filter((product) => Object.values(product).some(Boolean));
+}
+
+async function importProducts(file) {
+  const XLSX = await loadSheetJs();
+  const workbook = /\.csv$/i.test(file.name)
+    ? XLSX.read(await file.text(), { type: "string" })
+    : XLSX.read(await file.arrayBuffer());
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const products = productsFromSheet(XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }));
+  if (!products.length) throw new Error("No product rows found in the file.");
+  const { added, skipped } = await api("/api/products/bulk", { method: "POST", body: JSON.stringify({ products }) });
+  await loadProducts();
+  const details = skipped.map((row) => `${row.catalogueNumber || "(blank)"}: ${row.error}`).join("\n");
+  toast(`Added ${added.length} product(s), skipped ${skipped.length}.${details ? `\n\n${details}` : ""}`);
 }
 
 function openProductDialog(product) {
@@ -512,6 +627,76 @@ async function saveProduct(event) {
   toast(isNew ? "New product added." : "Product saved.");
 }
 
+async function deleteProduct() {
+  const id = $("#productId").value;
+  if (!id || !confirm(`Delete product ${state.loadedCatalogue}? This cannot be undone.`)) return;
+  await api(`/api/products/${encodeURIComponent(id)}`, { method: "DELETE" });
+  $("#productDialog").close();
+  await loadProducts();
+  await loadDashboard();
+  toast("Product deleted.");
+}
+
+function renderPermissionBoxes() {
+  $("#userPermissions").insertAdjacentHTML("beforeend", Object.entries(permissionLabels).map(([key, label]) =>
+    `<label class="checkbox-row"><input type="checkbox" data-permission="${html(key)}"> ${html(label)}</label>`).join(""));
+}
+
+function fillUserForm(user = {}) {
+  $("#userId").value = user._id || "";
+  $("#userFormTitle").textContent = user._id ? `Edit ${user.username}` : "New User";
+  $("#userUsername").value = user.username || "";
+  $("#userPassword").value = "";
+  $("#userPassword").required = !user._id;
+  $("#userPassword").placeholder = user._id ? "Leave blank to keep current password" : "At least 8 characters";
+  $$("[data-permission]").forEach((box) => { box.checked = (user.permissions || []).includes(box.dataset.permission); });
+  $("#userActive").checked = user.active !== false;
+}
+
+async function loadUsers() {
+  if (!can("admin")) return;
+  state.users = await api("/api/users");
+  $("#userRows").innerHTML = state.users.map((user) => `
+    <tr>
+      <td><strong>${html(user.username)}</strong></td>
+      <td>${user.permissions.map((key) => html(permissionLabels[key] || key)).join("<br>") || "View only"}</td>
+      <td><span class="${user.active ? "status-valid" : "status-bad"}">${user.active ? "active" : "inactive"}</span></td>
+      <td>
+        <div class="button-row">
+          <button class="secondary compact" type="button" data-edit-user="${html(user._id)}">Edit</button>
+          <button class="danger compact" type="button" data-delete-user="${html(user._id)}">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join("") || `<tr><td colspan="4">No users yet.</td></tr>`;
+}
+
+async function saveUser(event) {
+  event.preventDefault();
+  const id = $("#userId").value;
+  const payload = {
+    username: $("#userUsername").value.trim(),
+    permissions: $$("[data-permission]:checked").map((box) => box.dataset.permission),
+    active: $("#userActive").checked
+  };
+  if ($("#userPassword").value) payload.password = $("#userPassword").value;
+  await api(id ? `/api/users/${encodeURIComponent(id)}` : "/api/users", {
+    method: id ? "PUT" : "POST",
+    body: JSON.stringify(payload)
+  });
+  fillUserForm();
+  await loadUsers();
+  toast(id ? "User updated." : "User created.");
+}
+
+async function deleteUser(id) {
+  const user = state.users.find((item) => String(item._id) === String(id));
+  if (!user || !confirm(`Delete user ${user.username}? They will be signed out immediately.`)) return;
+  await api(`/api/users/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if ($("#userId").value === String(id)) fillUserForm();
+  await loadUsers();
+}
+
 async function generateLabels(event) {
   event.preventDefault();
   await refreshLotNumber();
@@ -537,14 +722,16 @@ async function generateLabels(event) {
 function renderCertificateRows(rows) {
   $("#certificateRows").innerHTML = rows.map((certificate) => `
     <tr>
+      <td class="select-cell">${certificate.qrLabelId ? `<input type="checkbox" data-select-id="${html(certificate.qrLabelId)}" aria-label="Select ${html(certificate.certificateId)}">` : ""}</td>
       <td>${html(certificate.certificateId)}</td>
       <td>${html(certificate.productName)}</td>
       <td><button class="lot-link" type="button" data-view-lot="${html(certificate.lotNumber)}">${html(certificate.lotNumber)}</button></td>
       <td><a href="/api/certificates/${encodeURIComponent(certificate.certificateId)}/image.webp" target="_blank" rel="noopener">Open COA</a></td>
       <td>${downloadMenuButton(certificate)}</td>
-      <td><button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button></td>
+      <td>${can("label:delete") ? `<button class="danger compact" type="button" data-delete-label="${html(certificate.qrLabelId)}" data-certificate-id="${html(certificate.certificateId)}">Delete</button>` : "-"}</td>
     </tr>
-  `).join("") || `<tr><td colspan="6">No certificate records found.</td></tr>`;
+  `).join("") || `<tr><td colspan="7">No certificate records found.</td></tr>`;
+  updateBulkButtons("#certificateRows");
 }
 
 async function searchCertificates() {
@@ -580,7 +767,7 @@ async function loadBatches() {
       <td>
         <div class="button-row">
           <button class="secondary compact" type="button" data-reprint-batch="${html(batch.batchId)}">Reprint</button>
-          <button class="danger compact" type="button" data-delete-batch="${html(batch.batchId)}" data-batch-quantity="${html(batch.quantity)}">Delete</button>
+          ${can("label:delete") ? `<button class="danger compact" type="button" data-delete-batch="${html(batch.batchId)}" data-batch-quantity="${html(batch.quantity)}">Delete</button>` : ""}
         </div>
       </td>
     </tr>
@@ -655,6 +842,21 @@ function bindEvents() {
   }));
   $("#productForm").addEventListener("submit", (event) => saveProduct(event).catch((error) => toast(error.message)));
   $("#addProduct").addEventListener("click", () => openProductDialog({}));
+  $("#importProductsButton").addEventListener("click", () => $("#importProducts").click());
+  $("#importProducts").addEventListener("change", (event) => {
+    const [file] = event.target.files;
+    event.target.value = "";
+    if (file) importProducts(file).catch((error) => toast(error.message));
+  });
+  $("#deleteProduct").addEventListener("click", () => deleteProduct().catch((error) => toast(error.message)));
+  $("#userForm").addEventListener("submit", (event) => saveUser(event).catch((error) => toast(error.message)));
+  $("#resetUser").addEventListener("click", () => fillUserForm());
+  $("#userRows").addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-edit-user]");
+    if (edit) fillUserForm(state.users.find((user) => String(user._id) === edit.dataset.editUser));
+    const remove = event.target.closest("[data-delete-user]");
+    if (remove) deleteUser(remove.dataset.deleteUser).catch((error) => toast(error.message));
+  });
   $("#closeProductDialog").addEventListener("click", () => $("#productDialog").close());
   // Clicking the dimmed backdrop (the dialog element itself) closes it.
   $("#productDialog").addEventListener("click", (event) => {
@@ -761,6 +963,25 @@ function bindEvents() {
       .catch((error) => toast(error.message));
   });
 
+  document.addEventListener("change", (event) => {
+    const all = event.target.closest("[data-select-all]");
+    if (all) {
+      $$(`${all.dataset.selectAll} [data-select-id]`).forEach((input) => { input.checked = all.checked; });
+      updateBulkButtons(all.dataset.selectAll);
+      return;
+    }
+    if (!event.target.matches("[data-select-id]")) return;
+    ["#labelSheet", "#certificateRows"].forEach((scope) => {
+      if (event.target.closest(scope)) updateBulkButtons(scope);
+    });
+  });
+  $$("[data-bulk-download]").forEach((button) => button.addEventListener("click", () => {
+    const ids = selectedIds(button.dataset.bulkDownload);
+    if (ids.length) startDownload(`/api/qr-labels/zip?ids=${encodeURIComponent(ids.join(","))}`);
+  }));
+  $$("[data-bulk-delete]").forEach((button) => button.addEventListener("click", () =>
+    deleteSelected(button.dataset.bulkDelete).catch((error) => toast(error.message))));
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDownloadMenu();
   });
@@ -779,7 +1000,11 @@ function bindEvents() {
 }
 
 async function boot() {
+  state.me = await api("/api/me");
+  applyPermissions();
   renderProductTableHead();
+  renderPermissionBoxes();
+  fillUserForm();
   bindEvents();
   const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   $("#manufacturingDate").value = localToday;
@@ -790,6 +1015,7 @@ async function boot() {
   updateGenerateButton();
   previewFromForm();
   await loadBatches();
+  await loadUsers();
 
   const initialLot = lotNumberFromLocation();
   if (initialLot) await openLotViewer(initialLot, "replace");
@@ -797,7 +1023,8 @@ async function boot() {
 
   // Allow deep-linking a tab, e.g. /#screen=generate
   const requested = new URLSearchParams(window.location.hash.slice(1)).get("screen");
-  if (requested && document.getElementById(requested)) showScreen(requested);
+  const requestedNav = $(`.nav-button[data-screen="${requested}"]`);
+  if (requested && document.getElementById(requested) && !requestedNav?.hidden) showScreen(requested);
 }
 boot().catch((error) => toast(error.message));
 
