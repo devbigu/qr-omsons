@@ -392,7 +392,7 @@ async function refreshLotNumber() {
   if (date) params.set("manufacturingDate", date);
   const lot = await api(`/api/lots/suggest?${params}`);
   $("#lotNumber").value = lot.lotNumber;
-  $("#lotRulePreview").innerHTML = `<strong>${html(lot.lotNumber)}</strong><br>${html(lot.ruleText)}<br>Month ${html(lot.month)} maps to code ${html(lot.monthCode)}`;
+  $("#lotRulePreview").innerHTML = `<strong>${html(lot.lotNumber)}</strong><br>${html(lot.ruleText)}${lot.serial ? "" : `<br>Month ${html(lot.month)} maps to code ${html(lot.monthCode)}`}`;
   previewFromForm();
 }
 function updateBatchCount() {

@@ -213,13 +213,56 @@ function monthCodeFor(rule = {}, date = new Date()) {
   return codes[date.getMonth()] || defaultMonthCodes[date.getMonth()];
 }
 
-function suggestLot(product, manufacturingDate) {
+// Master data sheet (Syringe Filter Master Data updated.xlsx), "Lot No." row.
+const membraneLotCodes = {
+  "NYLON": "SNY", "HIGH FLOW": "SHF", "CA": "SCA", "PVDF": "SVF", "PES": "SPS",
+  "PTFE": "STF", "GLASS FIBER": "SGF", "MCE": "SME", "PP": "SPP"
+};
+const poreLotCodes = {
+  "0.2": "002", "0.45": "045", "0.5": "005", "0.8": "080", "1": "010",
+  "1.5": "015", "2": "020", "5": "050", "10": "100"
+};
+
+function membraneLotCode(membrane = "") {
+  const base = String(membrane).replace(/\s+with\s+micro-?glass\s+fiber\s*$/i, "").trim().toUpperCase();
+  return membraneLotCodes[base] || "";
+}
+
+function poreLotCode(poreSize = "") {
+  const number = String(poreSize).match(/\d+(?:\.\d+)?/)?.[0];
+  return number ? poreLotCodes[String(Number(number))] || "" : "";
+}
+
+function suggestLot(product, manufacturingDate, lots = []) {
   const rule = product.lotRule || {};
   const date = parseDateInput(manufacturingDate);
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = String(date.getFullYear()).slice(-2);
   const monthCode = monthCodeFor(rule, date);
+
+  const membraneCode = membraneLotCode(product.membrane);
+  const poreCode = poreLotCode(product.poreSize);
+  if (membraneCode && poreCode) {
+    const base = `${membraneCode}${poreCode}${year}`;
+    const matching = lots.filter((lot) => new RegExp(`^${base}\\d{2,}$`).test(String(lot.lotNumber || "")));
+    const sameDay = manufacturingDate && matching.find((lot) =>
+      lot.catalogueNumber === product.catalogueNumber && lot.manufacturingDate === manufacturingDate);
+    const serial = sameDay
+      ? String(sameDay.lotNumber).slice(base.length)
+      : String(Math.max(0, ...matching.map((lot) => Number(String(lot.lotNumber).slice(base.length)))) + 1).padStart(2, "0");
+    return {
+      lotNumber: `${base}${serial}`,
+      prefix: membraneCode,
+      poreCode,
+      day,
+      month,
+      year,
+      monthCode,
+      serial,
+      ruleText: `${membraneCode} (${product.membrane}) + pore ${poreCode} (${product.poreSize}) + year ${year} + serial ${serial}`
+    };
+  }
   const productCode = String(rule.productCode || "55").trim();
   const prefix = rule.prefix === undefined ? "S" : String(rule.prefix);
   const dateFormat = rule.dateFormat === "DDMMYY" ? "DDMMYY" : "DDM";
@@ -1064,7 +1107,7 @@ app.get("/api/lots", asyncRoute(async (req, res) => {
 app.get("/api/lots/suggest", asyncRoute(async (req, res) => {
   const product = await findProductByCatalogue(req.query.catalogueNumber || "");
   if (!product) return res.status(404).json({ error: "Product not found." });
-  res.json(suggestLot(product, req.query.manufacturingDate));
+  res.json(suggestLot(product, req.query.manufacturingDate, await store.list("lots")));
 }));
 
 app.get("/api/lots/:id", asyncRoute(async (req, res) => {
@@ -1087,7 +1130,7 @@ app.post("/api/qr-batches/generate", asyncRoute(async (req, res) => {
   const product = await findProductByCatalogue(req.body.catalogueNumber || "");
   if (!product) return res.status(404).json({ error: "Product not found." });
 
-  const suggestedLot = suggestLot(product, req.body.manufacturingDate);
+  const suggestedLot = suggestLot(product, req.body.manufacturingDate, await store.list("lots"));
   const lotNumber = req.body.lotNumber?.trim() || suggestedLot.lotNumber;
   const startSerial = serialToNumber(req.body.startSerial);
   const quantity = req.body.quantity ? serialToNumber(req.body.quantity) : null;
@@ -1586,3 +1629,4 @@ module.exports.startServer = startServer;
 
 
 
+module.exports.suggestLot = suggestLot;
